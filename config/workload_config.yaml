@@ -1,0 +1,77 @@
+# Workload Balancing Configuration
+
+# Load balancing strategy
+load_balancing:
+  strategy: "dynamic"  # Options: static, dynamic, adaptive
+  rebalance_interval_seconds: 30
+  performance_history_window: 10  # Number of tasks to consider for performance averaging
+  
+  # Performance metrics to consider for balancing
+  metrics:
+    - name: "compute_time"
+      weight: 0.5
+    - name: "memory_usage"
+      weight: 0.3
+    - name: "network_latency"
+      weight: 0.2
+  
+  # Minimum task sizes to avoid excessive communication overhead
+  min_task_sizes:
+    inference_tokens: 64
+    batch_size: 1
+    layers: 1
+  
+  # Thresholds for rebalancing
+  thresholds:
+    worker_idle_percent_trigger: 15.0  # Trigger rebalance if a worker is idle >15% of time
+    performance_variance_trigger: 25.0  # Trigger if >25% variance across workers
+    network_saturation_percent: 80.0    # Throttle if network is >80% saturated
+    memory_headroom_percent: 10.0       # Required free memory percentage
+
+# Worker allocation
+worker_allocation:
+  initial_method: "capability_weighted"  # Options: equal, capability_weighted, memory_weighted
+  
+  # Capability weights for initial allocation
+  capability_weights:
+    cpu_cores: 0.3
+    ram_gb: 0.4
+    gpu_memory_gb: 0.3
+  
+  # Handling stragglers
+  straggler_detection:
+    enabled: true
+    threshold_percent: 150  # A worker is a straggler if it takes 1.5x the median time
+    action: "reassign"  # Options: reassign, duplicate, ignore
+  
+  # Worker specialization
+  specialization:
+    enabled: true
+    specialize_after_tasks: 50  # Number of tasks to analyze before specializing
+    max_specialized_workers_percent: 80  # Maximum % of workers to specialize
+
+# Task scheduling
+task_scheduling:
+  method: "priority_queue"  # Options: fifo, priority_queue, deadline
+  preemption: false
+  
+  # Task priority factors
+  priority_factors:
+    worker_affinity: 0.4
+    task_size: 0.3
+    request_timestamp: 0.2
+    worker_load: 0.1
+  
+  # Worker warmup
+  warmup:
+    enabled: true
+    tasks_per_worker: 5
+    ignore_metrics_during_warmup: true
+
+# Fault tolerance
+fault_tolerance:
+  worker_timeout_seconds: 60
+  task_timeout_multiplier: 3.0  # Task timeout = expected_duration * multiplier
+  max_retries: 3
+  backup_workers_percent: 15  # Keep this % of workers as backup for critical tasks
+  checkpointing_interval_seconds: 300

@@ -1,0 +1,66 @@
+# DistributedLLM Cluster Configuration
+
+# Coordinator node configuration
+coordinator:
+  host: "192.168.1.100"  # IP address of the coordinator machine
+  port: 5555             # Port for worker communication
+  dashboard_port: 8080   # Web dashboard for monitoring
+  max_workers: 10        # Maximum number of workers to connect
+
+# Worker nodes
+workers:
+  - id: "gaming-pc"
+    host: "192.168.1.101"
+    port: 5556
+    os: "linux"
+    capabilities:
+      cpu_cores: 16
+      cpu_type: "AMD Ryzen 9 5900X"
+      ram_gb: 64
+      gpu: "NVIDIA RTX 3080"
+      gpu_memory_gb: 10
+      disk_speed_mbps: 3000
+      priority: 1  # Lower number = higher priority
+
+  - id: "macbook-pro-m2"
+    host: "192.168.1.102"
+    port: 5556
+    os: "macos"
+    capabilities:
+      cpu_cores: 10
+      cpu_type: "Apple M2 Pro"
+      ram_gb: 32
+      gpu: "Apple Integrated"
+      gpu_memory_gb: 16
+      disk_speed_mbps: 2500
+      priority: 2
+
+  - id: "windows-laptop"
+    host: "192.168.1.103"
+    port: 5556
+    os: "windows"
+    capabilities:
+      cpu_cores: 8
+      cpu_type: "Intel i7-11800H"
+      ram_gb: 16
+      gpu: "NVIDIA RTX 3060 Mobile"
+      gpu_memory_gb: 6
+      disk_speed_mbps: 1800
+      priority: 3
+
+# Network configuration
+network:
+  timeout_seconds: 30
+  retry_attempts: 3
+  heartbeat_interval_seconds: 5
+  max_message_size_mb: 500
+  compression: true
+  encryption: true
+  protocol: "tcp"  # tcp or udp
+
+# Auto-discovery settings
+discovery:
+  enabled: true
+  broadcast_port: 5557
+  broadcast_interval_seconds: 10
+  auto_register: true

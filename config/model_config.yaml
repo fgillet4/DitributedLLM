@@ -1,0 +1,78 @@
+# LLM Model Configuration
+
+model:
+  name: "llama-2-13b"  # Model identifier
+  family: "llama"      # Model architecture family
+  version: "2.0"
+  size_billion_parameters: 13
+  
+  # Model architecture details
+  architecture:
+    hidden_size: 5120
+    num_attention_heads: 40
+    num_hidden_layers: 40
+    intermediate_size: 13824
+    max_position_embeddings: 4096
+    vocab_size: 32000
+    attention_implementation: "flash_attention"  # Options: standard, flash_attention, xformers
+  
+  # File locations
+  paths:
+    base_path: "./models"
+    weights_file: "llama-2-13b.pth"
+    tokenizer_file: "tokenizer.model"
+    config_file: "config.json"
+  
+  # Quantization settings
+  quantization:
+    enabled: true
+    method: "int8"  # Options: none, int8, int4, fp16, nf4
+    per_channel: true
+    calibration_dataset: "calibration_data.jsonl"
+  
+  # Parallelism strategy
+  parallelism:
+    approach: "tensor_parallel"  # Options: tensor_parallel, pipeline_parallel, expert_parallel, hybrid
+    tensor_parallel_size: 0  # 0 means auto-configure based on available devices
+    pipeline_parallel_size: 0
+    layer_distribution: "auto"  # Can be auto or a specific pattern like [0,0,0,1,1,1,2,2,2]
+  
+  # Inference settings
+  inference:
+    max_batch_size: 8
+    max_sequence_length: 2048
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 40
+    repetition_penalty: 1.1
+    do_sample: true
+  
+  # Optimization settings
+  optimization:
+    kv_cache_enabled: true
+    attention_implementation: "flash_attention"
+    mixed_precision: true
+    compile_graph: true
+    optimization_level: 3  # 0-3, with 3 being most aggressive optimization
+    memory_efficient_attention: true
+
+# Deployment-specific settings
+deployment:
+  layer_allocation:
+    strategy: "memory_balanced"  # Options: compute_balanced, memory_balanced, network_optimized, custom
+    recomputation: false  # Whether to recompute forward activations during backward pass
+    pin_layers: false  # Whether to pin layers to specific workers
+  
+  caching:
+    kv_cache_enabled: true
+    disk_offload_enabled: true
+    max_disk_cache_size_gb: 100
+  
+  communication:
+    compress_activations: true
+    overlap_computation: true
+    gradient_accumulation_steps: 1
+  
+  fallback:
+    enabled: true  # Whether to fall back to CPU if GPU memory is exhausted
+    cpu_offload_layers: ["embed"]  # Layers to offload to CPU even when GPU is available
