@@ -124,10 +124,10 @@ If you use DistributedLLM in your research, please cite:
 
 ```bibtex
 @software{DistributedLLM2023,
-  author = {Your Name},
+  author = {Francis Gillet},
   title = {DistributedLLM: Heterogeneous Distributed Computing for Large Language Models},
   year = {2023},
-  url = {https://github.com/yourusername/distributed-llm}
+  url = {https://github.com/fgillet4/DitributedLLM}
 }
 ```
 
@@ -136,7 +136,7 @@ If you use DistributedLLM in your research, please cite:
 Questions? Ideas? Reach out!
 
 - GitHub Issues: Preferred for technical questions and bug reports
-- Email: your.email@example.com
+- Email: fgillet4l@gmail.com
 
 ---
 
