@@ -57,6 +57,25 @@ network:
   compression: true
   encryption: true
   protocol: "tcp"  # tcp or udp
+  
+  # Internet settings
+  internet_mode: true
+  use_ssl: true
+  cert_file: "certs/server.crt"
+  key_file: "certs/server.key"
+  
+  # Connection quality thresholds
+  high_latency_threshold_ms: 100
+  bandwidth_minimum_mbps: 5
+  
+  # Timeouts for internet
+  connection_timeout_seconds: 60
+  heartbeat_interval_seconds: 15
+  task_timeout_multiplier: 5
+  
+  # Registration
+  coordinator_public_address: "your-domain.com"  # Public DNS or IP
+  registration_token: "your-secure-token"
 
 # Auto-discovery settings
 discovery:

@@ -1,0 +1,8 @@
+Matrix Partitioning: Large matrices are split along specific dimensions. For example, in a linear layer with shape [hidden_size, ffn_size], you might split along the ffn_size dimension.
+Computational Flow:
+Each device holds a portion of the weights
+Input tensors are either replicated or split depending on the operation
+Each device performs computation on its partition
+Results are then synchronized through all-reduce or all-gather operations
+this is what i was thinkin. haha, then u could run massive models on several smaller machines
+which woudl be headski
