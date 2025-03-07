@@ -6,3 +6,46 @@ Each device performs computation on its partition
 Results are then synchronized through all-reduce or all-gather operations
 this is what i was thinkin. haha, then u could run massive models on several smaller machines
 which woudl be headski
+
+Professional LLMs like Claude and other commercial services do implement sophisticated caching strategies, though the specifics vary between systems.
+For large language model services, several levels of caching are common:
+Common Caching Strategies in Production LLMs
+1. KV-Cache (Attention Cache)
+Almost all production LLM systems implement KV-caching for efficient autoregressive generation. This caches the key and value tensors for previous tokens during a single generation, avoiding redundant computation:
+
+Standard practice: Claude, GPT-4, and all other commercial LLMs use this
+Performance impact: 10-100x speedup for token generation after the first token
+
+2. Request-Level Caching
+Many commercial systems cache identical requests:
+
+Implementation: Hash the exact prompt + parameters and store the result
+TTL (Time-To-Live): Often short (minutes to hours) to balance staleness and performance
+Used by: Many API services like OpenAI, Anthropic, and others for high-traffic patterns
+
+3. Prompt Prefill Caching
+A technique specifically for common prompt prefixes:
+
+When many users share the same system prompt/instructions but have different user inputs
+Cache the hidden states for common prefix portions
+Claude likely uses this for its system instructions
+
+4. Neuron/Layer Activation Caching
+More sophisticated systems sometimes cache intermediate activations:
+
+Less common than the above techniques
+May be used for high-value, repeated computations
+Requires more complex invalidation strategies
+
+Considerations for Production Systems
+Commercial systems like Claude balance several factors when implementing caching:
+
+Memory constraints: GPU memory is expensive, so caches must be managed efficiently
+Staleness: Models are updated regularly, so cache invalidation is crucial
+Privacy: Ensures cached results don't leak between users
+Determinism: Guarantees the same input gives the same output within a time window
+
+Your Implementation vs. Commercial Systems
+Your enhanced DistributedLLM implementation now includes KV-caching similar to production systems. Adding the query-level cache I suggested would make it more aligned with commercial offerings.
+The approach of "tiered caching" (GPU → CPU → Disk) is also used in systems like Claude to maximize throughput while managing costs. This is particularly important when serving millions of users with limited GPU resources.
+For a hobbyist or research system, your implementation with the enhancements represents a reasonable approximation of how commercial systems manage generation efficiency.
