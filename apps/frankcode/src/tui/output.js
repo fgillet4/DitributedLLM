@@ -86,7 +86,16 @@ function createOutputRenderer({ widget, tokenMonitor }) {
   function addErrorMessage(message) {
     // Format and add the message
     widget.log(chalk.bold.red('ERROR:'));
-    widget.log(chalk.red(message));
+    
+    // Clean up any raw error text for better presentation
+    const cleanedMessage = message
+      .replace(/\{.*?\}/g, '') // Remove JSON objects
+      .replace(/ECONNREFUSED/g, 'Connection Refused')
+      .replace(/http:\/\/localhost:[0-9]+\/api\/generate/g, 'Ollama API')
+      .replace(/connect ECONNREFUSED ::1:[0-9]+/g, 'Could not connect to Ollama API')
+      .trim();
+    
+    widget.log(chalk.red(cleanedMessage));
     widget.log(''); // Empty line for spacing
     
     // Render the screen

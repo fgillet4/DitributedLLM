@@ -6,7 +6,7 @@
 
 const fetch = require('node-fetch');
 const WebSocket = require('ws');
-const { logger } = require('../utils');
+const { logger } = require('../utils/logger');
 const { createQueue } = require('./queue');
 const { createWebSocketClient } = require('./websocket');
 
@@ -43,68 +43,137 @@ function createClient(options) {
   // WebSocket client for distributed LLM
   let wsClient = null;
   
-  /**
+    /**
    * Initialize the client
    * 
    * @returns {Promise<void>}
    */
   async function initialize() {
-    if (api === 'distributed') {
-      // Initialize WebSocket connection for distributed mode
-      wsClient = createWebSocketClient({
-        host,
-        port,
-        model,
-        onConnect: () => {
-          isConnected = true;
-          reconnectAttempts = 0;
-          logger.info('Connected to distributed LLM network');
-        },
-        onDisconnect: () => {
-          isConnected = false;
-          logger.warn('Disconnected from distributed LLM network');
-          
-          // Try to reconnect
-          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+    try {
+      if (api === 'distributed') {
+        // Initialize WebSocket connection for distributed mode
+        wsClient = createWebSocketClient({
+          host,
+          port,
+          model,
+          onConnect: () => {
+            isConnected = true;
+            reconnectAttempts = 0;
+            logger.info('Connected to distributed LLM network');
+          },
+          onDisconnect: () => {
+            isConnected = false;
+            logger.warn('Disconnected from distributed LLM network');
             
-            logger.info(`Attempting to reconnect in ${delay / 1000} seconds...`);
-            setTimeout(() => wsClient.connect(), delay);
-          } else {
-            logger.error('Max reconnection attempts reached');
+            // Try to reconnect
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+              reconnectAttempts++;
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+              
+              logger.info(`Attempting to reconnect in ${delay / 1000} seconds...`);
+              setTimeout(() => wsClient.connect(), delay);
+            } else {
+              logger.error('Max reconnection attempts reached');
+            }
+          },
+          onError: (error) => {
+            logger.error('WebSocket error', { error });
           }
-        },
-        onError: (error) => {
-          logger.error('WebSocket error', { error });
+        });
+        
+        await wsClient.connect();
+      } else {
+        // For Ollama, just test the connection
+        try {
+          const response = await fetch(`http://${host}:${port}/api/tags`);
+          if (response.ok) {
+            const data = await response.json();
+            isConnected = true;
+            
+            // Log available models
+            const models = data.models || [];
+            logger.info(`Connected to Ollama with ${models.length} models available`);
+            
+            // Check if our model is available
+            const modelAvailable = models.some(m => m.name === model);
+            if (!modelAvailable) {
+              logger.warn(`Model '${model}' not found in Ollama`);
+            }
+          } else {
+            throw new Error(`Ollama API returned status ${response.status}`);
+          }
+        } catch (error) {
+          logger.error('Failed to connect to Ollama API', { error });
+          isConnected = false;
         }
+      }
+    } catch (error) {
+      logger.error('Failed to initialize API client connection', { error });
+      isConnected = false;
+    }
+  }
+  /**
+ * Process a user message and generate a response
+ * 
+ * @param {string} message User's message
+ * @returns {Promise<Object>} Response object
+ */
+  async function processMessage(message) {
+    try {
+      // Add user message to conversation history
+      conversationHistory.push({ role: 'user', content: message });
+      
+      // Get current context
+      const context = contextManager.getCurrentContext();
+      
+      // Generate LLM prompt
+      const prompt = generatePrompt(message, context);
+      
+      // Get response from LLM
+      logger.debug('Sending prompt to LLM', { messageLength: message.length });
+      const response = await apiClient.generateResponse(prompt);
+      
+      // Handle error from API client
+      if (response.error) {
+        // Add a special response for network errors
+        conversationHistory.push({ role: 'assistant', content: response.text });
+        
+        return {
+          text: response.text,
+          error: true,
+          tokenUsage: tokenMonitor.getCurrentUsage()
+        };
+      }
+      
+      // Add assistant response to conversation history
+      conversationHistory.push({ role: 'assistant', content: response.text });
+      
+      // Update token usage
+      tokenMonitor.updateUsage(countTokens(response.text));
+      
+      // Check for file modifications in the response
+      const fileModifications = parseFileModifications(response.text);
+      
+      // Return the processed response
+      return {
+        text: response.text,
+        fileModifications,
+        tokenUsage: tokenMonitor.getCurrentUsage()
+      };
+    } catch (error) {
+      logger.error('Failed to process message', { error });
+      
+      // Add error to conversation history
+      conversationHistory.push({ 
+        role: 'assistant', 
+        content: `Error processing message: ${error.message}` 
       });
       
-      await wsClient.connect();
-    } else {
-      // For Ollama, just test the connection
-      try {
-        const response = await fetch(`http://${host}:${port}/api/tags`);
-        if (response.ok) {
-          const data = await response.json();
-          isConnected = true;
-          
-          // Log available models
-          const models = data.models || [];
-          logger.info(`Connected to Ollama with ${models.length} models available`);
-          
-          // Check if our model is available
-          const modelAvailable = models.some(m => m.name === model);
-          if (!modelAvailable) {
-            logger.warn(`Model '${model}' not found in Ollama`);
-          }
-        } else {
-          throw new Error(`Ollama API returned status ${response.status}`);
-        }
-      } catch (error) {
-        logger.error('Failed to connect to Ollama API', { error });
-        isConnected = false;
-      }
+      return {
+        text: `Error processing message: ${error.message}`,
+        error: true,
+        tokenUsage: tokenMonitor.getCurrentUsage()
+      };
     }
   }
   
@@ -202,8 +271,15 @@ function createClient(options) {
         model: data.model || model
       };
     } catch (error) {
+      // Improved error handling for better TUI display
       logger.error('Failed to generate response from Ollama', { error });
-      throw error;
+      
+      // Return a user-friendly message instead of throwing
+      return {
+        text: `Error: Connection to Ollama failed. Try running with --offline flag or make sure Ollama is running with 'ollama serve'\n\nTechnical details: ${error.message}`,
+        tokens: 0,
+        error: true
+      };
     }
   }
   
@@ -442,3 +518,8 @@ function createClient(options) {
     reconnect: initialize
   };
 }
+
+// Export the client creation function
+module.exports = {
+  createClient
+};

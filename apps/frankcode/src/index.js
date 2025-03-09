@@ -23,8 +23,8 @@ const {
  */
 async function startApp(config) {
   try {
-    // Setup logging based on configuration
-    setupLogging(config.logging);
+    // Setup logging based on configuration - Specify TUI mode to disable console logging
+    setupLogging(config.logging, true); // Pass 'true' to indicate we're in TUI mode
     
     logger.info('Starting SynthBot...');
     logger.debug('Configuration loaded', { config });
@@ -38,14 +38,59 @@ async function startApp(config) {
     
     logger.info(`Found ${projectFiles.length} files in project`);
     
-    // Initialize API client
-    logger.info('Connecting to DistributedLLM coordinator...');
-    const apiClient = createClient({
-      host: config.llm.coordinatorHost,
-      port: config.llm.coordinatorPort,
-      model: config.llm.model,
-      temperature: config.llm.temperature
-    });
+    // Create API client
+    let apiClient;
+    
+    // Check if offline mode is enabled
+    if (config.offline) {
+      logger.info('Running in offline mode - no LLM connection will be attempted');
+      
+      // Create a dummy client for offline mode
+      apiClient = {
+        generateResponse: async (prompt) => ({ 
+          text: "Running in offline mode. LLM services are not available.\n\nYour prompt was:\n" + prompt,
+          tokens: 0 
+        }),
+        streamResponse: async (prompt, onToken, onComplete) => {
+          onToken("Running in offline mode. LLM services are not available.");
+          onComplete({ tokens: 0 });
+        },
+        getConnectionStatus: () => false,
+        getModelInfo: async () => ({ name: 'offline', parameters: {} })
+      };
+    } else {
+      // Normal mode - try to connect to LLM service
+      logger.info('Connecting to LLM service...');
+      
+      // Add a try-catch to handle connection errors gracefully
+      try {
+        apiClient = createClient({
+          host: config.llm.coordinatorHost,
+          port: config.llm.coordinatorPort,
+          model: config.llm.model,
+          temperature: config.llm.temperature,
+          api: config.llm.api
+        });
+        
+        logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+      } catch (error) {
+        logger.error('Failed to create API client', { error });
+        
+        // Create a dummy client that returns error messages
+        apiClient = {
+          generateResponse: async () => ({ 
+            text: "ERROR: Could not connect to LLM service. Please check if Ollama is running with 'ollama serve'\n\nTry running with --offline flag if you want to explore the UI without LLM connection.",
+            tokens: 0 
+          }),
+          streamResponse: async (prompt, onToken, onComplete) => {
+            onToken("ERROR: Could not connect to LLM service. Please check if Ollama is running with 'ollama serve'");
+            onComplete({ tokens: 0 });
+          },
+          getConnectionStatus: () => false,
+          getModelInfo: async () => ({ name: 'disconnected', parameters: {} })
+        };
+      }
+    }
     
     // Create token monitor
     const tokenMonitor = createTokenMonitor({
@@ -72,6 +117,12 @@ async function startApp(config) {
       projectRoot: config.projectRoot
     });
     
+    // Start the TUI
+    app.start();
+
+    // Save statusBar reference for other components to use
+    app.screen.statusBar = app.statusBar;
+    
     // Handle application shutdown
     function shutdown() {
       logger.info('Shutting down FrankCode...');
@@ -83,9 +134,6 @@ async function startApp(config) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     
-    // Start the TUI
-    app.start();
-    
     logger.info('SynthBot started successfully');
     
   } catch (error) {
@@ -95,6 +143,7 @@ async function startApp(config) {
   }
 }
 
+// IMPORTANT: Export the startApp function
 module.exports = {
   startApp
 };

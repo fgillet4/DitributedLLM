@@ -25,7 +25,7 @@ const { logger } = require('../utils');
  * @returns {Object} The TUI application object
  */
 function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
-  // Create a screen object
+  // Create screen object
   const screen = blessed.screen({
     smartCSR: true,
     title: 'FrankCode',
@@ -33,6 +33,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     dockBorders: true,
     autoPadding: true
   });
+
+  // Store config and project root in screen for access by components
+  screen.config = config;
+  screen.cwd = projectRoot;
   
   // Apply theme
   applyTheme(screen, config.theme);
@@ -73,7 +77,6 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     tags: true
   });
   
-  // Create input box (bottom right, span 10/12 of width)
   const inputBox = grid.set(8, 2, 2, 10, blessed.textarea, {
     label: 'Command',
     inputOnFocus: true,
@@ -82,7 +85,11 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
       left: 2
     },
     style: {
+      fg: 'white',
+      bg: 'black',
       focus: {
+        fg: 'white',
+        bg: 'black',
         border: {
           fg: 'blue'
         }
@@ -132,6 +139,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     fileTree,
     screen
   });
+
+  const renderInterval = setInterval(() => {
+    screen.render();
+  }, 100);
   
   // Set up key bindings
   screen.key(['C-c'], () => {
@@ -168,9 +179,13 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
   // Initialize file tree
   fileTree.init();
   
-  // Return the application object
-  return {
+  
+
+// Return the application object
+// Return the application object
+return {
     screen,
+    statusBar: statusBarController,
     start: () => {
       // Initial rendering
       screen.render();
@@ -178,8 +193,21 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
       // Welcome message
       outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
       statusBarController.update('Ready');
+      
+      // Force render again after a short delay to ensure UI is properly displayed
+      setTimeout(() => {
+        screen.render();
+      }, 500);
+      
+      // Set up another timer to force periodic renders to keep UI responsive
+      setInterval(() => {
+        screen.render();
+      }, 1000);
     },
     destroy: () => {
+      if (renderInterval) {
+        clearInterval(renderInterval);
+      }
       screen.destroy();
     }
   };

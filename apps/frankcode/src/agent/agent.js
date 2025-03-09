@@ -264,6 +264,9 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
     reset: () => {
       conversationHistory = [];
       contextManager.reset();
+    },
+    setApiClient: (newClient) => {
+      apiClient = newClient;
     }
   };
 }

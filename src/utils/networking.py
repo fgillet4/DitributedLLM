@@ -413,3 +413,23 @@ def create_tcp_server(host: str, port: int) -> Optional[socket.socket]:
     except Exception as e:
         logger.error(f"Error creating TCP server: {e}")
         return None
+    # In src/utils/networking.py
+# Add TLS/SSL support to socket communications
+
+def create_ssl_context(cert_file, key_file=None):
+    """Create an SSL context for secure communications."""
+    import ssl
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    context.load_cert_chain(certfile=cert_file, keyfile=key_file)
+    return context
+
+def create_tcp_server_secure(host, port, cert_file, key_file):
+    """Create a secure TCP server socket."""
+    import ssl
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((host, port))
+    server_socket.listen(5)
+    
+    context = create_ssl_context(cert_file, key_file)
+    return context.wrap_socket(server_socket, server_side=True)

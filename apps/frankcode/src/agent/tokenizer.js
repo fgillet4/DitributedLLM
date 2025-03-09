@@ -5,11 +5,16 @@
  * This is important for managing context windows with LLMs
  */
 
-const tiktoken = require('tiktoken');
-const logger = require('../utils/logger');
+let tiktoken;
+try {
+  tiktoken = require('tiktoken');
+} catch (error) {
+  // Silent fail - don't log anything here
+}
 
 // Cache encoding to avoid recreating it on each call
 let encoding;
+let logger;
 
 /**
  * Initialize the tokenizer
@@ -19,13 +24,25 @@ let encoding;
  */
 function initTokenizer(model = 'cl100k_base') {
   try {
-    encoding = tiktoken.getEncoding(model);
-    logger.debug(`Tokenizer initialized with model: ${model}`);
-  } catch (error) {
-    logger.error('Failed to initialize tokenizer', { error });
+    // Only import logger after we're initialized to avoid circular dependencies
+    if (!logger) {
+      logger = require('../utils/logger').logger;
+    }
     
-    // Fallback to a simple tokenization method
-    logger.warn('Using fallback tokenization method');
+    if (tiktoken) {
+      encoding = tiktoken.getEncoding(model);
+      logger.debug(`Tokenizer initialized with model: ${model}`);
+    } else {
+      // Fallback when tiktoken is not available - don't log warning
+      logger.debug('Using fallback tokenization method - tiktoken not available');
+      encoding = null;
+    }
+  } catch (error) {
+    // Log error to file but don't throw - silently use fallback
+    if (logger) {
+      logger.debug('Failed to initialize tokenizer, using fallback', { error });
+    }
+    
     encoding = null;
   }
 }
@@ -50,11 +67,13 @@ function countTokens(text) {
       return encoding.encode(text).length;
     }
     
-    // Fallback tokenization (approximate)
+    // Fallback tokenization (approximate) - don't log warning
     // This is a simplistic approximation - in practice, real tokenization is more complex
     return Math.ceil(text.length / 4);
   } catch (error) {
-    logger.error('Error counting tokens', { error });
+    if (logger) {
+      logger.debug('Error counting tokens, using fallback', { error });
+    }
     
     // Return a conservative estimate
     return Math.ceil(text.length / 3);
@@ -89,7 +108,7 @@ function truncateToTokens(text, maxTokens) {
       return encoding.decode(truncatedTokens);
     }
     
-    // Fallback truncation (approximate)
+    // Fallback truncation (approximate) - no warning log
     const approxTokens = countTokens(text);
     
     if (approxTokens <= maxTokens) {
@@ -115,7 +134,9 @@ function truncateToTokens(text, maxTokens) {
     // If no good breakpoint, just cut and add ellipsis
     return truncated + '...';
   } catch (error) {
-    logger.error('Error truncating text to tokens', { error });
+    if (logger) {
+      logger.debug('Error truncating text to tokens, using simple fallback', { error });
+    }
     
     // Return a conservatively truncated text
     const approxCharPerToken = 4;
@@ -124,8 +145,7 @@ function truncateToTokens(text, maxTokens) {
   }
 }
 
-// Initialize tokenizer on module load
-initTokenizer();
+// Lazy initialization - initialize when first used
 
 module.exports = {
   countTokens,

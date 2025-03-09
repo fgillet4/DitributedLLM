@@ -6,6 +6,15 @@
  * Parses command line arguments and starts the application
  */
 
+// First, immediately disable console output for TUI
+const { quietStartup } = require('../src/utils/logger');
+
+// Check if running the 'run' command
+if (process.argv.includes('run')) {
+  // Immediately redirect console output to files
+  quietStartup();
+}
+
 const { program } = require('commander');
 const path = require('path');
 const { startApp } = require('../src');
@@ -28,6 +37,7 @@ program
   .option('-m, --model <model>', 'LLM model to use')
   .option('-t, --temperature <temp>', 'Temperature setting (0-1)')
   .option('--api <api>', 'API to use: "ollama" or "distributed"')
+  .option('--offline', 'Run in offline mode without LLM connection')
   .option('--max-tokens <tokens>', 'Maximum tokens for context')
   .option('--theme <theme>', 'UI theme')
   .option('-v, --verbose', 'Enable verbose logging')
@@ -39,13 +49,18 @@ program
       const config = await loadConfig({
         configPath: options.config,
         projectRoot: process.cwd(),
+        offline: options.offline || false,
         ...options
       });
       
       // Start the application
       await startApp(config);
     } catch (error) {
-      console.error('Failed to start FrankCode:', error.message);
+      // Log to file only
+      logger.error('Failed to start FrankCode:', error);
+      
+      // Write to stderr (this will still show, but better than logs mixing with TUI)
+      process.stderr.write(`Failed to start FrankCode: ${error.message}\n`);
       process.exit(1);
     }
   });

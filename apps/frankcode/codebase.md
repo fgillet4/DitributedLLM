@@ -282,12 +282,12 @@ module.exports = {
 
 ```json
 {
-    "name": "synthbot",
+    "name": "frankcode",
     "version": "0.1.0",
     "description": "Terminal-based coding agent powered by distributed LLMs",
     "main": "src/index.js",
     "bin": {
-      "synthbot": "./bin/synthbot.js"
+      "frankcode": "./bin/frankcode.js"
     },
     "scripts": {
       "start": "node src/index.js",
@@ -750,6 +750,9 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
     reset: () => {
       conversationHistory = [];
       contextManager.reset();
+    },
+    setApiClient: (newClient) => {
+      apiClient = newClient;
     }
   };
 }
@@ -1272,11 +1275,16 @@ module.exports = {
  * This is important for managing context windows with LLMs
  */
 
-const tiktoken = require('tiktoken');
-const { logger } = require('../utils');
+let tiktoken;
+try {
+  tiktoken = require('tiktoken');
+} catch (error) {
+  console.warn('Warning: tiktoken module not available, using fallback tokenization');
+}
 
 // Cache encoding to avoid recreating it on each call
 let encoding;
+let logger;
 
 /**
  * Initialize the tokenizer
@@ -1286,13 +1294,32 @@ let encoding;
  */
 function initTokenizer(model = 'cl100k_base') {
   try {
-    encoding = tiktoken.getEncoding(model);
-    logger.debug(`Tokenizer initialized with model: ${model}`);
+    // Only import logger after we're initialized to avoid circular dependencies
+    if (!logger) {
+      logger = require('../utils/logger').logger;
+    }
+    
+    if (tiktoken) {
+      encoding = tiktoken.getEncoding(model);
+      logger.debug(`Tokenizer initialized with model: ${model}`);
+    } else {
+      // Fallback when tiktoken is not available
+      logger.warn('Using fallback tokenization method - tiktoken not available');
+      encoding = null;
+    }
   } catch (error) {
-    logger.error('Failed to initialize tokenizer', { error });
+    if (logger) {
+      logger.error('Failed to initialize tokenizer', { error });
+    } else {
+      console.error('Failed to initialize tokenizer:', error);
+    }
     
     // Fallback to a simple tokenization method
-    logger.warn('Using fallback tokenization method');
+    if (logger) {
+      logger.warn('Using fallback tokenization method');
+    } else {
+      console.warn('Using fallback tokenization method');
+    }
     encoding = null;
   }
 }
@@ -1321,7 +1348,11 @@ function countTokens(text) {
     // This is a simplistic approximation - in practice, real tokenization is more complex
     return Math.ceil(text.length / 4);
   } catch (error) {
-    logger.error('Error counting tokens', { error });
+    if (logger) {
+      logger.error('Error counting tokens', { error });
+    } else {
+      console.error('Error counting tokens:', error);
+    }
     
     // Return a conservative estimate
     return Math.ceil(text.length / 3);
@@ -1382,7 +1413,11 @@ function truncateToTokens(text, maxTokens) {
     // If no good breakpoint, just cut and add ellipsis
     return truncated + '...';
   } catch (error) {
-    logger.error('Error truncating text to tokens', { error });
+    if (logger) {
+      logger.error('Error truncating text to tokens', { error });
+    } else {
+      console.error('Error truncating text to tokens:', error);
+    }
     
     // Return a conservatively truncated text
     const approxCharPerToken = 4;
@@ -1391,8 +1426,8 @@ function truncateToTokens(text, maxTokens) {
   }
 }
 
-// Initialize tokenizer on module load
-initTokenizer();
+// Lazy initialization - initialize when first used
+// This helps avoid circular dependencies
 
 module.exports = {
   countTokens,
@@ -1412,7 +1447,7 @@ module.exports = {
 
 const fetch = require('node-fetch');
 const WebSocket = require('ws');
-const { logger } = require('../utils');
+const { logger } = require('../utils/logger');
 const { createQueue } = require('./queue');
 const { createWebSocketClient } = require('./websocket');
 
@@ -1449,68 +1484,73 @@ function createClient(options) {
   // WebSocket client for distributed LLM
   let wsClient = null;
   
-  /**
+    /**
    * Initialize the client
    * 
    * @returns {Promise<void>}
    */
   async function initialize() {
-    if (api === 'distributed') {
-      // Initialize WebSocket connection for distributed mode
-      wsClient = createWebSocketClient({
-        host,
-        port,
-        model,
-        onConnect: () => {
-          isConnected = true;
-          reconnectAttempts = 0;
-          logger.info('Connected to distributed LLM network');
-        },
-        onDisconnect: () => {
-          isConnected = false;
-          logger.warn('Disconnected from distributed LLM network');
-          
-          // Try to reconnect
-          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+    try {
+      if (api === 'distributed') {
+        // Initialize WebSocket connection for distributed mode
+        wsClient = createWebSocketClient({
+          host,
+          port,
+          model,
+          onConnect: () => {
+            isConnected = true;
+            reconnectAttempts = 0;
+            logger.info('Connected to distributed LLM network');
+          },
+          onDisconnect: () => {
+            isConnected = false;
+            logger.warn('Disconnected from distributed LLM network');
             
-            logger.info(`Attempting to reconnect in ${delay / 1000} seconds...`);
-            setTimeout(() => wsClient.connect(), delay);
+            // Try to reconnect
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+              reconnectAttempts++;
+              const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+              
+              logger.info(`Attempting to reconnect in ${delay / 1000} seconds...`);
+              setTimeout(() => wsClient.connect(), delay);
+            } else {
+              logger.error('Max reconnection attempts reached');
+            }
+          },
+          onError: (error) => {
+            logger.error('WebSocket error', { error });
+          }
+        });
+        
+        await wsClient.connect();
+      } else {
+        // For Ollama, just test the connection
+        try {
+          const response = await fetch(`http://${host}:${port}/api/tags`);
+          if (response.ok) {
+            const data = await response.json();
+            isConnected = true;
+            
+            // Log available models
+            const models = data.models || [];
+            logger.info(`Connected to Ollama with ${models.length} models available`);
+            
+            // Check if our model is available
+            const modelAvailable = models.some(m => m.name === model);
+            if (!modelAvailable) {
+              logger.warn(`Model '${model}' not found in Ollama`);
+            }
           } else {
-            logger.error('Max reconnection attempts reached');
+            throw new Error(`Ollama API returned status ${response.status}`);
           }
-        },
-        onError: (error) => {
-          logger.error('WebSocket error', { error });
+        } catch (error) {
+          logger.error('Failed to connect to Ollama API', { error });
+          isConnected = false;
         }
-      });
-      
-      await wsClient.connect();
-    } else {
-      // For Ollama, just test the connection
-      try {
-        const response = await fetch(`http://${host}:${port}/api/tags`);
-        if (response.ok) {
-          const data = await response.json();
-          isConnected = true;
-          
-          // Log available models
-          const models = data.models || [];
-          logger.info(`Connected to Ollama with ${models.length} models available`);
-          
-          // Check if our model is available
-          const modelAvailable = models.some(m => m.name === model);
-          if (!modelAvailable) {
-            logger.warn(`Model '${model}' not found in Ollama`);
-          }
-        } else {
-          throw new Error(`Ollama API returned status ${response.status}`);
-        }
-      } catch (error) {
-        logger.error('Failed to connect to Ollama API', { error });
-        isConnected = false;
       }
+    } catch (error) {
+      logger.error('Failed to initialize API client connection', { error });
+      isConnected = false;
     }
   }
   
@@ -1848,6 +1888,11 @@ function createClient(options) {
     reconnect: initialize
   };
 }
+
+// Export the client creation function
+module.exports = {
+  createClient
+};
 ```
 
 # src/api/index.js
@@ -2286,6 +2331,9 @@ const {
  * Start the SynthBot application
  * @param {Object} config Configuration object
  */
+// src/index.js - Complete function
+// Replace the startApp function or update the relevant part:
+
 async function startApp(config) {
   try {
     // Setup logging based on configuration
@@ -2303,14 +2351,59 @@ async function startApp(config) {
     
     logger.info(`Found ${projectFiles.length} files in project`);
     
-    // Initialize API client
-    logger.info('Connecting to DistributedLLM coordinator...');
-    const apiClient = createClient({
-      host: config.llm.coordinatorHost,
-      port: config.llm.coordinatorPort,
-      model: config.llm.model,
-      temperature: config.llm.temperature
-    });
+    // Create API client
+    let apiClient;
+    
+    // Check if offline mode is enabled
+    if (config.offline) {
+      logger.info('Running in offline mode - no LLM connection will be attempted');
+      
+      // Create a dummy client for offline mode
+      apiClient = {
+        generateResponse: async (prompt) => ({ 
+          text: "Running in offline mode. LLM services are not available.\n\nYour prompt was:\n" + prompt,
+          tokens: 0 
+        }),
+        streamResponse: async (prompt, onToken, onComplete) => {
+          onToken("Running in offline mode. LLM services are not available.");
+          onComplete({ tokens: 0 });
+        },
+        getConnectionStatus: () => false,
+        getModelInfo: async () => ({ name: 'offline', parameters: {} })
+      };
+    } else {
+      // Normal mode - try to connect to LLM service
+      logger.info('Connecting to LLM service...');
+      
+      // Add a try-catch to handle connection errors gracefully
+      try {
+        apiClient = createClient({
+          host: config.llm.coordinatorHost,
+          port: config.llm.coordinatorPort,
+          model: config.llm.model,
+          temperature: config.llm.temperature,
+          api: config.llm.api
+        });
+        
+        logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+      } catch (error) {
+        logger.error('Failed to create API client', { error });
+        
+        // Create a dummy client that returns error messages
+        apiClient = {
+          generateResponse: async () => ({ 
+            text: "ERROR: Could not connect to LLM service. Please check if Ollama is running with 'ollama serve'\n\nTry running with --offline flag if you want to explore the UI without LLM connection.",
+            tokens: 0 
+          }),
+          streamResponse: async (prompt, onToken, onComplete) => {
+            onToken("ERROR: Could not connect to LLM service. Please check if Ollama is running with 'ollama serve'");
+            onComplete({ tokens: 0 });
+          },
+          getConnectionStatus: () => false,
+          getModelInfo: async () => ({ name: 'disconnected', parameters: {} })
+        };
+      }
+    }
     
     // Create token monitor
     const tokenMonitor = createTokenMonitor({
@@ -2336,6 +2429,11 @@ async function startApp(config) {
       config: config.ui,
       projectRoot: config.projectRoot
     });
+    // Start the TUI
+    app.start();
+
+    // Save statusBar reference for other components to use
+    screen.statusBar = app.statusBar;
     
     // Handle application shutdown
     function shutdown() {
@@ -2348,8 +2446,7 @@ async function startApp(config) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     
-    // Start the TUI
-    app.start();
+    
     
     logger.info('SynthBot started successfully');
     
@@ -2395,7 +2492,7 @@ const { logger } = require('../utils');
  * @returns {Object} The TUI application object
  */
 function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
-  // Create a screen object
+  // Create screen object
   const screen = blessed.screen({
     smartCSR: true,
     title: 'FrankCode',
@@ -2403,6 +2500,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     dockBorders: true,
     autoPadding: true
   });
+
+  // Store config and project root in screen for access by components
+  screen.config = config;
+  screen.cwd = projectRoot;
   
   // Apply theme
   applyTheme(screen, config.theme);
@@ -2443,7 +2544,6 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     tags: true
   });
   
-  // Create input box (bottom right, span 10/12 of width)
   const inputBox = grid.set(8, 2, 2, 10, blessed.textarea, {
     label: 'Command',
     inputOnFocus: true,
@@ -2452,7 +2552,11 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
       left: 2
     },
     style: {
+      fg: 'white',
+      bg: 'black',
       focus: {
+        fg: 'white',
+        bg: 'black',
         border: {
           fg: 'blue'
         }
@@ -2539,20 +2643,36 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
   fileTree.init();
   
   // Return the application object
-  return {
-    screen,
-    start: () => {
-      // Initial rendering
+  // Handle render updates to prevent freezing
+const renderInterval = setInterval(() => {
+  screen.render();
+}, 100);
+
+// Return the application object
+// Return the application object
+return {
+  screen,
+  statusBar: statusBarController,
+  start: () => {
+    // Initial rendering
+    screen.render();
+    
+    // Welcome message
+    outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
+    statusBarController.update('Ready');
+    
+    // Force render again after a short delay to ensure UI is properly displayed
+    setTimeout(() => {
       screen.render();
-      
-      // Welcome message
-      outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
-      statusBarController.update('Ready');
-    },
-    destroy: () => {
-      screen.destroy();
+    }, 500);
+  },
+  destroy: () => {
+    if (renderInterval) {
+      clearInterval(renderInterval);
     }
-  };
+    screen.destroy();
+  }
+};
 }
 
 module.exports = {
@@ -2810,7 +2930,7 @@ module.exports = {
  * Manages user input and command processing
  */
 
-const { logger } = require('../utils');
+const { logger } = require('../utils/logger');
 const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
@@ -2900,19 +3020,43 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       // Display user input
       outputRenderer.addUserMessage(input);
       
-      // Send to agent for processing
-      const response = await agent.processMessage(input);
-      
-      // Display assistant response
-      outputRenderer.addAssistantMessage(response.text);
-      
-      // Check for file modifications
-      if (response.fileModifications && response.fileModifications.length > 0) {
-        await handleFileModifications(response.fileModifications);
+      try {
+        // Send to agent for processing
+        const response = await agent.processMessage(input);
+        
+        // Display assistant response
+        if (response && response.text) {
+          outputRenderer.addAssistantMessage(response.text);
+          
+          // Check for file modifications
+          if (response.fileModifications && response.fileModifications.length > 0) {
+            await handleFileModifications(response.fileModifications);
+          }
+        } else {
+          outputRenderer.addErrorMessage('No response received from the agent.');
+        }
+      } catch (processingError) {
+        // Handle specific agent processing errors in a cleaner way
+        logger.error('Agent processing error', { processingError });
+        
+        let errorMessage = processingError.message || 'Unknown error';
+        
+        // Check for common connection errors
+        if (errorMessage.includes('ECONNREFUSED')) {
+          outputRenderer.addErrorMessage(`Connection to Ollama failed. Try running with --offline flag or make sure Ollama is running with 'ollama serve'`);
+        } else {
+          outputRenderer.addErrorMessage(`Error: ${errorMessage}`);
+        }
+        
+        // Force render to recover the UI
+        widget.screen.render();
       }
     } catch (error) {
       logger.error('Failed to process input', { error });
       outputRenderer.addErrorMessage(`Error processing input: ${error.message}`);
+      
+      // Force render to recover the UI
+      widget.screen.render();
     }
   }
   
@@ -2952,6 +3096,26 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         case 'shell':
           await executeShellCommand(args.join(' '));
           break;
+          
+        case 'ls':
+          await executeShellCommand('ls -la');
+          break;
+          
+        case 'pwd':
+          await executeShellCommand('pwd');
+          break;
+          
+        case 'models':
+          await listAndSelectModels();
+          break;
+          
+        case 'selectmodel':
+          if (!args[0]) {
+            outputRenderer.addErrorMessage('Please specify a model name or number');
+            return;
+          }
+          await selectModel(args[0]);
+          break;
         
         case 'load':
           await loadFile(args[0]);
@@ -2985,19 +3149,150 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         case 'na':
           await rejectAllModifications();
           break;
+          
+        case 'offline':
+          setOfflineMode(true);
+          break;
+          
+        case 'online':
+          setOfflineMode(false);
+          break;
         
         default:
           outputRenderer.addSystemMessage(`Unknown command: ${cmd}. Type /help for available commands.`);
       }
+      
+      // Force a render after processing command
+      widget.screen.render();
     } catch (error) {
       logger.error('Failed to process command', { error });
       outputRenderer.addErrorMessage(`Error processing command: ${error.message}`);
+      widget.screen.render();
     }
   }
-  
+  // src/tui/input.js - add this function
+  /**
+   * Select a model to use
+   * 
+   * @param {string} modelIdentifier Model name or number
+   */
+  async function selectModel(modelIdentifier) {
+    try {
+      // Get models from Ollama
+      const fetch = require('node-fetch');
+      const host = 'localhost';
+      const port = 11434;
+      
+      const response = await fetch(`http://${host}:${port}/api/tags`);
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const models = data.models || [];
+      
+      if (models.length === 0) {
+        outputRenderer.addSystemMessage('No models found');
+        return;
+      }
+      
+      // Find the model by name or index
+      let selectedModel;
+      
+      if (!isNaN(parseInt(modelIdentifier))) {
+        // Select by index
+        const index = parseInt(modelIdentifier) - 1;
+        if (index >= 0 && index < models.length) {
+          selectedModel = models[index];
+        }
+      } else {
+        // Select by name
+        selectedModel = models.find(m => m.name === modelIdentifier);
+      }
+      
+      if (!selectedModel) {
+        outputRenderer.addErrorMessage(`Model "${modelIdentifier}" not found`);
+        return;
+      }
+      
+      // Update the apiClient
+      const model = selectedModel.name;
+      
+      // Try to connect with new model
+      outputRenderer.addSystemMessage(`Switching to model: ${model}`);
+      
+      try {
+        // Create new client with selected model
+        const { createClient } = require('../api');
+        const newClient = createClient({
+          host,
+          port,
+          model,
+          temperature: 0.7,
+          api: 'ollama'
+        });
+        
+        // Replace the old client in the agent
+        agent.setApiClient(newClient);
+        
+        outputRenderer.addSystemMessage(`Successfully switched to model: ${model}`);
+        
+        // Update status bar without using screen reference
+        if (widget && widget.screen && widget.screen.statusBar) {
+          widget.screen.statusBar.update(`Model: ${model}`);
+        }
+      } catch (error) {
+        outputRenderer.addErrorMessage(`Failed to switch model: ${error.message}`);
+      }
+    } catch (error) {
+      outputRenderer.addErrorMessage(`Failed to fetch models: ${error.message}`);
+    }
+  }
+  /**
+   * List and select models from Ollama
+   */
+  async function listAndSelectModels() {
+    try {
+      outputRenderer.addSystemMessage('Fetching available models from Ollama...');
+      
+      // Get models from Ollama
+      const fetch = require('node-fetch');
+      const host = 'localhost';
+      const port = 11434;
+      
+      const response = await fetch(`http://${host}:${port}/api/tags`);
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const models = data.models || [];
+      
+      if (models.length === 0) {
+        outputRenderer.addSystemMessage('No models found. Make sure Ollama is running with `ollama serve`');
+        return;
+      }
+      
+      // Display available models
+      outputRenderer.addSystemMessage(`Found ${models.length} models:`);
+      models.forEach((model, index) => {
+        const size = model.size ? `(${Math.round(model.size / (1024 * 1024))} MB)` : '(unknown size)';
+        outputRenderer.addSystemMessage(`${index + 1}. ${model.name} ${size}`);
+      });
+      
+      // Prompt to select a model
+      outputRenderer.addSystemMessage('Type /selectmodel <number> or /selectmodel <n> to select a model');
+    } catch (error) {
+      outputRenderer.addErrorMessage(`Failed to fetch models: ${error.message}`);
+      outputRenderer.addSystemMessage('Make sure Ollama is running with `ollama serve`');
+    }
+  }
   /**
    * Show help text
    */
+  // src/tui/input.js - update showHelp function
   function showHelp() {
     const helpText = `
 Available commands:
@@ -3007,6 +3302,12 @@ Available commands:
   /refresh          - Refresh the file tree
   /exec <command>   - Execute a shell command
   /shell <command>  - Same as /exec
+  /ls               - List files (shortcut for /exec ls)
+  /pwd              - Show current directory (shortcut for /exec pwd)
+  /models           - List available Ollama models
+  /selectmodel <n>  - Select a model by number or name
+  /offline          - Switch to offline mode (no LLM)
+  /online           - Switch to online mode (try connecting to LLM)
   /load <file>      - Load a file into context
   /save <file>      - Save the conversation to a file
   /reset            - Reset agent context and conversation
@@ -3018,7 +3319,55 @@ Available commands:
     
     outputRenderer.addSystemMessage(helpText);
   }
-  
+
+  async function setOfflineMode(offline) {
+    try {
+      const { createClient } = require('../api');
+      
+      if (offline) {
+        // Create a dummy client for offline mode
+        const offlineClient = {
+          generateResponse: async (prompt) => ({ 
+            text: "Running in offline mode. LLM services are not available.\n\nYour prompt was:\n" + prompt,
+            tokens: 0 
+          }),
+          streamResponse: async (prompt, onToken, onComplete) => {
+            onToken("Running in offline mode. LLM services are not available.");
+            onComplete({ tokens: 0 });
+          },
+          getConnectionStatus: () => false,
+          getModelInfo: async () => ({ name: 'offline', parameters: {} })
+        };
+        
+        // Set in the agent
+        agent.setApiClient(offlineClient);
+        outputRenderer.addSystemMessage("Switched to offline mode. LLM services will not be used.");
+      } else {
+        // Try to create an online client
+        try {
+          const host = widget.screen.config?.llm?.coordinatorHost || 'localhost';
+          const port = widget.screen.config?.llm?.coordinatorPort || 11434;
+          const model = widget.screen.config?.llm?.model || 'llama2';
+          
+          const onlineClient = createClient({
+            host,
+            port,
+            model,
+            temperature: 0.7,
+            api: 'ollama'
+          });
+          
+          // Set in the agent
+          agent.setApiClient(onlineClient);
+          outputRenderer.addSystemMessage("Attempting to switch to online mode.");
+        } catch (error) {
+          outputRenderer.addErrorMessage(`Failed to go online: ${error.message}`);
+        }
+      }
+    } catch (error) {
+      outputRenderer.addErrorMessage(`Failed to change mode: ${error.message}`);
+    }
+  }
   /**
    * Handle file modifications
    * 
@@ -3215,25 +3564,29 @@ Available commands:
       return;
     }
     
-    try {
-      // Resolve path
-      const fullPath = path.resolve(path.join(screen.cwd, filePath));
+    // Display user input
+  outputRenderer.addUserMessage(input);
+
+  try {
+    // Send to agent for processing
+    const response = await agent.processMessage(input);
+    
+    // Display assistant response
+    if (response && response.text) {
+      outputRenderer.addAssistantMessage(response.text);
       
-      // Get conversation history
-      const history = agent.getConversationHistory();
-      
-      // Format conversation
-      const formatted = history.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).join('\n\n');
-      
-      // Write to file
-      const fs = require('fs').promises;
-      await fs.writeFile(fullPath, formatted, 'utf8');
-      
-      outputRenderer.addSystemMessage(`Conversation saved to: ${filePath}`);
-    } catch (error) {
-      logger.error(`Failed to save conversation: ${filePath}`, { error });
-      outputRenderer.addErrorMessage(`Error saving conversation: ${error.message}`);
+      // Check for file modifications
+      if (response.fileModifications && response.fileModifications.length > 0) {
+        await handleFileModifications(response.fileModifications);
+      }
+    } else {
+      outputRenderer.addErrorMessage('No response received from the agent.');
     }
+  } catch (processingError) {
+    // Handle specific agent processing errors
+    logger.error('Agent processing error', { processingError });
+    outputRenderer.addErrorMessage(`Agent error: ${processingError.message}`);
+  }
   }
   
   // Initialize immediately
@@ -3246,6 +3599,11 @@ Available commands:
     handleFileModifications
   };
 }
+
+// Export the function
+module.exports = {
+  createInputHandler
+};
 ```
 
 # src/tui/output.js
@@ -3339,7 +3697,16 @@ function createOutputRenderer({ widget, tokenMonitor }) {
   function addErrorMessage(message) {
     // Format and add the message
     widget.log(chalk.bold.red('ERROR:'));
-    widget.log(chalk.red(message));
+    
+    // Clean up any raw error text for better presentation
+    const cleanedMessage = message
+      .replace(/\{.*?\}/g, '') // Remove JSON objects
+      .replace(/ECONNREFUSED/g, 'Connection Refused')
+      .replace(/http:\/\/localhost:[0-9]+\/api\/generate/g, 'Ollama API')
+      .replace(/connect ECONNREFUSED ::1:[0-9]+/g, 'Could not connect to Ollama API')
+      .trim();
+    
+    widget.log(chalk.red(cleanedMessage));
     widget.log(''); // Empty line for spacing
     
     // Render the screen
@@ -4739,11 +5106,12 @@ module.exports = {
  * Exports utility functions and objects
  */
 
+// Note: Order of imports is important to avoid circular dependencies
 const { logger, setupLogging } = require('./logger');
+const { formatTimestamp, formatFileSize, formatDuration, formatPercentage, truncate } = require('./formatters');
 const { loadConfig, saveConfig } = require('./config');
 const { scanProjectFiles, ensureDir, pathExists, getStats, getFileType } = require('./fileSystem');
 const { createGitUtils } = require('./git');
-const { formatTimestamp, formatFileSize, formatDuration, formatPercentage, truncate } = require('./formatters');
 const { createTokenMonitor } = require('./tokenMonitor');
 
 module.exports = {
@@ -4819,6 +5187,14 @@ const logger = winston.createLogger({
   ]
 });
 
+// Add console transport by default
+logger.add(new winston.transports.Console({
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.simple()
+  )
+}));
+
 /**
  * Set up logging based on configuration
  * 
@@ -4838,14 +5214,25 @@ function setupLogging(config = {}) {
   // Set log level
   logger.level = level;
   
-  // Add console transport if enabled
+  // Replace console transport if needed
   if (console) {
+    // Remove existing console transports
+    logger.transports = logger.transports.filter(
+      t => t.name !== 'console'
+    );
+    
+    // Add new console transport
     logger.add(new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple()
       )
     }));
+  } else {
+    // Remove console transports
+    logger.transports = logger.transports.filter(
+      t => t.name !== 'console'
+    );
   }
   
   // Configure file transports if enabled
@@ -4880,6 +5267,11 @@ function setupLogging(config = {}) {
   
   logger.info('Logging initialized', { level });
 }
+
+module.exports = {
+  logger,
+  setupLogging
+};
 ```
 
 # src/utils/tokenMonitor.js
