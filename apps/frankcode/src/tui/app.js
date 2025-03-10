@@ -73,8 +73,78 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
         bg: 'black'
       }
     },
+    // Add these settings for smoother scrolling
     mouse: true,
-    tags: true
+    keys: true,
+    vi: true,
+    // Increase scroll amount for smoother experience
+    scrollAmount: 3,
+    // Lower scroll time for smoother animation
+    scrollSpeed: 10,
+    // Allow mousewheel scrolling
+    wheelBehavior: 'scroll',
+    // Improved border style
+    border: {
+      type: 'line',
+      fg: 'blue'
+    },
+    // Better padding for content
+    padding: {
+      left: 1,
+      right: 1
+    }
+  });
+  
+  // Add additional key bindings for scrolling
+  conversationPanel.key(['pageup'], () => {
+    conversationPanel.setScroll(conversationPanel.getScroll() - conversationPanel.height + 2);
+    screen.render();
+  });
+  
+  conversationPanel.key(['pagedown'], () => {
+    conversationPanel.setScroll(conversationPanel.getScroll() + conversationPanel.height - 2);
+    screen.render();
+  });
+  
+  // Allow using up/down arrow keys to scroll when focus is on conversation panel
+  conversationPanel.key(['up'], () => {
+    conversationPanel.scroll(-3); // Scroll up 3 lines
+    screen.render();
+  });
+  
+  conversationPanel.key(['down'], () => {
+    conversationPanel.scroll(3); // Scroll down 3 lines
+    screen.render();
+  });
+  
+  // Add a key binding to toggle focus to the conversation panel for scrolling
+  screen.key(['C-f'], () => {
+    conversationPanel.focus();
+    statusBarController.update('Scroll mode active. Press Tab to return to input.');
+    screen.render();
+  });
+  
+  // Update the tab key handler to cycle through all elements
+  screen.key(['tab'], () => {
+    if (screen.focused === inputBox) {
+      fileTreePanel.focus();
+    } else if (screen.focused === fileTreePanel) {
+      conversationPanel.focus();
+    } else {
+      inputBox.focus();
+    }
+    screen.render();
+  });
+  
+  // Add a mouse handler for better wheel behavior
+  conversationPanel.on('wheeldown', () => {
+    conversationPanel.scroll(3); // Scroll down 3 lines
+    screen.render();
+  });
+  
+  conversationPanel.on('wheelup', () => {
+    conversationPanel.scroll(-3); // Scroll up 3 lines
+    screen.render();
   });
   
   const inputBox = grid.set(8, 2, 2, 10, blessed.textarea, {

@@ -30,6 +30,9 @@ function createOutputRenderer({ widget, tokenMonitor }) {
     widget.log(message);
     widget.log(''); // Empty line for spacing
     
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
+    
     // Render the screen
     widget.screen.render();
   }
@@ -59,6 +62,9 @@ function createOutputRenderer({ widget, tokenMonitor }) {
     
     widget.log(''); // Empty line for spacing
     
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
+    
     // Render the screen
     widget.screen.render();
   }
@@ -69,10 +75,20 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} message Message text
    */
   function addSystemMessage(message) {
-    // Format and add the message
-    widget.log(chalk.bold.yellow('SYSTEM:'));
-    widget.log(chalk.yellow(message));
+    // Format and add the message with nicer formatting
+    widget.log(chalk.bold.yellow('┌─ SYSTEM ────────────────────────────────────'));
+    
+    // Split multi-line messages
+    const lines = message.split('\n');
+    lines.forEach(line => {
+      widget.log(chalk.yellow('│ ') + line);
+    });
+    
+    widget.log(chalk.bold.yellow('└────────────────────────────────────────────'));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();
@@ -84,8 +100,8 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} message Error message
    */
   function addErrorMessage(message) {
-    // Format and add the message
-    widget.log(chalk.bold.red('ERROR:'));
+    // Format and add the message with nicer formatting
+    widget.log(chalk.bold.red('┌─ ERROR ─────────────────────────────────────'));
     
     // Clean up any raw error text for better presentation
     const cleanedMessage = message
@@ -95,8 +111,17 @@ function createOutputRenderer({ widget, tokenMonitor }) {
       .replace(/connect ECONNREFUSED ::1:[0-9]+/g, 'Could not connect to Ollama API')
       .trim();
     
-    widget.log(chalk.red(cleanedMessage));
+    // Split multi-line error messages
+    const lines = cleanedMessage.split('\n');
+    lines.forEach(line => {
+      widget.log(chalk.red('│ ') + line);
+    });
+    
+    widget.log(chalk.bold.red('└────────────────────────────────────────────'));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();
@@ -109,8 +134,8 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} language Programming language
    */
   function addCodeBlock(code, language = '') {
-    // Format the code block
-    widget.log(chalk.bold(`\`\`\`${language}`));
+    // Create a nicer code block header
+    widget.log(chalk.bold.cyan(`┌─ ${language || 'Code'} ${'─'.repeat(Math.max(0, 40 - language.length))}`));
     
     // Add the code with line numbers
     const lines = code.split('\n');
@@ -118,14 +143,18 @@ function createOutputRenderer({ widget, tokenMonitor }) {
       // Add line numbers for longer code blocks
       if (lines.length > 5) {
         const lineNum = String(index + 1).padStart(3, ' ');
-        widget.log(chalk.dim(`${lineNum} |`) + ' ' + line);
+        widget.log(chalk.dim(`│ ${lineNum} │`) + ' ' + line);
       } else {
-        widget.log(line);
+        widget.log(chalk.dim('│') + ' ' + line);
       }
     });
     
-    widget.log(chalk.bold('```'));
+    // Add a nice footer
+    widget.log(chalk.bold.cyan(`└${'─'.repeat(44)}`));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();

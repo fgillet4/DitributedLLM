@@ -7,9 +7,11 @@
 const { createClient } = require('./client');
 const { createQueue } = require('./queue');
 const { createWebSocketClient } = require('./websocket');
+const { createOllamaClient } = require('./ollama-api-integration');
 
 module.exports = {
   createClient,
   createQueue,
-  createWebSocketClient
+  createWebSocketClient,
+  createOllamaClient
 };

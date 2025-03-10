@@ -1279,7 +1279,7 @@ let tiktoken;
 try {
   tiktoken = require('tiktoken');
 } catch (error) {
-  console.warn('Warning: tiktoken module not available, using fallback tokenization');
+  // Silent fail - don't log anything here
 }
 
 // Cache encoding to avoid recreating it on each call
@@ -1303,23 +1303,16 @@ function initTokenizer(model = 'cl100k_base') {
       encoding = tiktoken.getEncoding(model);
       logger.debug(`Tokenizer initialized with model: ${model}`);
     } else {
-      // Fallback when tiktoken is not available
-      logger.warn('Using fallback tokenization method - tiktoken not available');
+      // Fallback when tiktoken is not available - don't log warning
+      logger.debug('Using fallback tokenization method - tiktoken not available');
       encoding = null;
     }
   } catch (error) {
+    // Log error to file but don't throw - silently use fallback
     if (logger) {
-      logger.error('Failed to initialize tokenizer', { error });
-    } else {
-      console.error('Failed to initialize tokenizer:', error);
+      logger.debug('Failed to initialize tokenizer, using fallback', { error });
     }
     
-    // Fallback to a simple tokenization method
-    if (logger) {
-      logger.warn('Using fallback tokenization method');
-    } else {
-      console.warn('Using fallback tokenization method');
-    }
     encoding = null;
   }
 }
@@ -1344,14 +1337,12 @@ function countTokens(text) {
       return encoding.encode(text).length;
     }
     
-    // Fallback tokenization (approximate)
+    // Fallback tokenization (approximate) - don't log warning
     // This is a simplistic approximation - in practice, real tokenization is more complex
     return Math.ceil(text.length / 4);
   } catch (error) {
     if (logger) {
-      logger.error('Error counting tokens', { error });
-    } else {
-      console.error('Error counting tokens:', error);
+      logger.debug('Error counting tokens, using fallback', { error });
     }
     
     // Return a conservative estimate
@@ -1387,7 +1378,7 @@ function truncateToTokens(text, maxTokens) {
       return encoding.decode(truncatedTokens);
     }
     
-    // Fallback truncation (approximate)
+    // Fallback truncation (approximate) - no warning log
     const approxTokens = countTokens(text);
     
     if (approxTokens <= maxTokens) {
@@ -1414,9 +1405,7 @@ function truncateToTokens(text, maxTokens) {
     return truncated + '...';
   } catch (error) {
     if (logger) {
-      logger.error('Error truncating text to tokens', { error });
-    } else {
-      console.error('Error truncating text to tokens:', error);
+      logger.debug('Error truncating text to tokens, using simple fallback', { error });
     }
     
     // Return a conservatively truncated text
@@ -1427,7 +1416,6 @@ function truncateToTokens(text, maxTokens) {
 }
 
 // Lazy initialization - initialize when first used
-// This helps avoid circular dependencies
 
 module.exports = {
   countTokens,
@@ -1553,6 +1541,70 @@ function createClient(options) {
       isConnected = false;
     }
   }
+  /**
+ * Process a user message and generate a response
+ * 
+ * @param {string} message User's message
+ * @returns {Promise<Object>} Response object
+ */
+  async function processMessage(message) {
+    try {
+      // Add user message to conversation history
+      conversationHistory.push({ role: 'user', content: message });
+      
+      // Get current context
+      const context = contextManager.getCurrentContext();
+      
+      // Generate LLM prompt
+      const prompt = generatePrompt(message, context);
+      
+      // Get response from LLM
+      logger.debug('Sending prompt to LLM', { messageLength: message.length });
+      const response = await apiClient.generateResponse(prompt);
+      
+      // Handle error from API client
+      if (response.error) {
+        // Add a special response for network errors
+        conversationHistory.push({ role: 'assistant', content: response.text });
+        
+        return {
+          text: response.text,
+          error: true,
+          tokenUsage: tokenMonitor.getCurrentUsage()
+        };
+      }
+      
+      // Add assistant response to conversation history
+      conversationHistory.push({ role: 'assistant', content: response.text });
+      
+      // Update token usage
+      tokenMonitor.updateUsage(countTokens(response.text));
+      
+      // Check for file modifications in the response
+      const fileModifications = parseFileModifications(response.text);
+      
+      // Return the processed response
+      return {
+        text: response.text,
+        fileModifications,
+        tokenUsage: tokenMonitor.getCurrentUsage()
+      };
+    } catch (error) {
+      logger.error('Failed to process message', { error });
+      
+      // Add error to conversation history
+      conversationHistory.push({ 
+        role: 'assistant', 
+        content: `Error processing message: ${error.message}` 
+      });
+      
+      return {
+        text: `Error processing message: ${error.message}`,
+        error: true,
+        tokenUsage: tokenMonitor.getCurrentUsage()
+      };
+    }
+  }
   
   /**
    * Generate a response from the LLM
@@ -1648,8 +1700,15 @@ function createClient(options) {
         model: data.model || model
       };
     } catch (error) {
+      // Improved error handling for better TUI display
       logger.error('Failed to generate response from Ollama', { error });
-      throw error;
+      
+      // Return a user-friendly message instead of throwing
+      return {
+        text: `Error: Connection to Ollama failed. Try running with --offline flag or make sure Ollama is running with 'ollama serve'\n\nTechnical details: ${error.message}`,
+        tokens: 0,
+        error: true
+      };
     }
   }
   
@@ -2331,13 +2390,10 @@ const {
  * Start the SynthBot application
  * @param {Object} config Configuration object
  */
-// src/index.js - Complete function
-// Replace the startApp function or update the relevant part:
-
 async function startApp(config) {
   try {
-    // Setup logging based on configuration
-    setupLogging(config.logging);
+    // Setup logging based on configuration - Specify TUI mode to disable console logging
+    setupLogging(config.logging, true); // Pass 'true' to indicate we're in TUI mode
     
     logger.info('Starting SynthBot...');
     logger.debug('Configuration loaded', { config });
@@ -2429,11 +2485,12 @@ async function startApp(config) {
       config: config.ui,
       projectRoot: config.projectRoot
     });
+    
     // Start the TUI
     app.start();
 
     // Save statusBar reference for other components to use
-    screen.statusBar = app.statusBar;
+    app.screen.statusBar = app.statusBar;
     
     // Handle application shutdown
     function shutdown() {
@@ -2446,8 +2503,6 @@ async function startApp(config) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     
-    
-    
     logger.info('SynthBot started successfully');
     
   } catch (error) {
@@ -2457,6 +2512,7 @@ async function startApp(config) {
   }
 }
 
+// IMPORTANT: Export the startApp function
 module.exports = {
   startApp
 };
@@ -2540,8 +2596,78 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
         bg: 'black'
       }
     },
+    // Add these settings for smoother scrolling
     mouse: true,
-    tags: true
+    keys: true,
+    vi: true,
+    // Increase scroll amount for smoother experience
+    scrollAmount: 3,
+    // Lower scroll time for smoother animation
+    scrollSpeed: 10,
+    // Allow mousewheel scrolling
+    wheelBehavior: 'scroll',
+    // Improved border style
+    border: {
+      type: 'line',
+      fg: 'blue'
+    },
+    // Better padding for content
+    padding: {
+      left: 1,
+      right: 1
+    }
+  });
+  
+  // Add additional key bindings for scrolling
+  conversationPanel.key(['pageup'], () => {
+    conversationPanel.setScroll(conversationPanel.getScroll() - conversationPanel.height + 2);
+    screen.render();
+  });
+  
+  conversationPanel.key(['pagedown'], () => {
+    conversationPanel.setScroll(conversationPanel.getScroll() + conversationPanel.height - 2);
+    screen.render();
+  });
+  
+  // Allow using up/down arrow keys to scroll when focus is on conversation panel
+  conversationPanel.key(['up'], () => {
+    conversationPanel.scroll(-3); // Scroll up 3 lines
+    screen.render();
+  });
+  
+  conversationPanel.key(['down'], () => {
+    conversationPanel.scroll(3); // Scroll down 3 lines
+    screen.render();
+  });
+  
+  // Add a key binding to toggle focus to the conversation panel for scrolling
+  screen.key(['C-f'], () => {
+    conversationPanel.focus();
+    statusBarController.update('Scroll mode active. Press Tab to return to input.');
+    screen.render();
+  });
+  
+  // Update the tab key handler to cycle through all elements
+  screen.key(['tab'], () => {
+    if (screen.focused === inputBox) {
+      fileTreePanel.focus();
+    } else if (screen.focused === fileTreePanel) {
+      conversationPanel.focus();
+    } else {
+      inputBox.focus();
+    }
+    screen.render();
+  });
+  
+  // Add a mouse handler for better wheel behavior
+  conversationPanel.on('wheeldown', () => {
+    conversationPanel.scroll(3); // Scroll down 3 lines
+    screen.render();
+  });
+  
+  conversationPanel.on('wheelup', () => {
+    conversationPanel.scroll(-3); // Scroll up 3 lines
+    screen.render();
   });
   
   const inputBox = grid.set(8, 2, 2, 10, blessed.textarea, {
@@ -2606,6 +2732,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     fileTree,
     screen
   });
+
+  const renderInterval = setInterval(() => {
+    screen.render();
+  }, 100);
   
   // Set up key bindings
   screen.key(['C-c'], () => {
@@ -2642,37 +2772,38 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
   // Initialize file tree
   fileTree.init();
   
-  // Return the application object
-  // Handle render updates to prevent freezing
-const renderInterval = setInterval(() => {
-  screen.render();
-}, 100);
+  
 
 // Return the application object
 // Return the application object
 return {
-  screen,
-  statusBar: statusBarController,
-  start: () => {
-    // Initial rendering
-    screen.render();
-    
-    // Welcome message
-    outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
-    statusBarController.update('Ready');
-    
-    // Force render again after a short delay to ensure UI is properly displayed
-    setTimeout(() => {
+    screen,
+    statusBar: statusBarController,
+    start: () => {
+      // Initial rendering
       screen.render();
-    }, 500);
-  },
-  destroy: () => {
-    if (renderInterval) {
-      clearInterval(renderInterval);
+      
+      // Welcome message
+      outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
+      statusBarController.update('Ready');
+      
+      // Force render again after a short delay to ensure UI is properly displayed
+      setTimeout(() => {
+        screen.render();
+      }, 500);
+      
+      // Set up another timer to force periodic renders to keep UI responsive
+      setInterval(() => {
+        screen.render();
+      }, 1000);
+    },
+    destroy: () => {
+      if (renderInterval) {
+        clearInterval(renderInterval);
+      }
+      screen.destroy();
     }
-    screen.destroy();
-  }
-};
+  };
 }
 
 module.exports = {
@@ -2958,6 +3089,12 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   
   // Initialize
   function init() {
+    // Add event listener for keypress to ensure UI updates
+    widget.on('keypress', function() {
+      // Force a screen render after each key press
+      screen.render();
+    });
+
     // Handle input submission
     widget.key('enter', async () => {
       const input = widget.getValue().trim();
@@ -3001,6 +3138,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     // Handle tab completion
     widget.key('tab', () => {
       // Implement tab completion later
+      widget.screen.render(); // Ensure UI updates
     });
   }
   
@@ -3170,7 +3308,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       widget.screen.render();
     }
   }
-  // src/tui/input.js - add this function
+  
   /**
    * Select a model to use
    * 
@@ -3249,6 +3387,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       outputRenderer.addErrorMessage(`Failed to fetch models: ${error.message}`);
     }
   }
+  
   /**
    * List and select models from Ollama
    */
@@ -3283,43 +3422,58 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       });
       
       // Prompt to select a model
-      outputRenderer.addSystemMessage('Type /selectmodel <number> or /selectmodel <n> to select a model');
+      outputRenderer.addSystemMessage('Type /selectmodel <number> or /selectmodel <name> to select a model');
     } catch (error) {
       outputRenderer.addErrorMessage(`Failed to fetch models: ${error.message}`);
       outputRenderer.addSystemMessage('Make sure Ollama is running with `ollama serve`');
     }
   }
+  
   /**
    * Show help text
    */
-  // src/tui/input.js - update showHelp function
   function showHelp() {
     const helpText = `
-Available commands:
-  /help             - Show this help text
-  /clear            - Clear the conversation
-  /exit, /quit      - Exit the application
-  /refresh          - Refresh the file tree
-  /exec <command>   - Execute a shell command
-  /shell <command>  - Same as /exec
-  /ls               - List files (shortcut for /exec ls)
-  /pwd              - Show current directory (shortcut for /exec pwd)
-  /models           - List available Ollama models
-  /selectmodel <n>  - Select a model by number or name
-  /offline          - Switch to offline mode (no LLM)
-  /online           - Switch to online mode (try connecting to LLM)
-  /load <file>      - Load a file into context
-  /save <file>      - Save the conversation to a file
-  /reset            - Reset agent context and conversation
-  /yes, /y          - Approve the current file modification
-  /no, /n           - Reject the current file modification
-  /yesall, /ya      - Approve all pending file modifications
-  /noall, /na       - Reject all pending file modifications
-    `;
-    
+  Available commands:
+    /help             - Show this help text
+    /clear            - Clear the conversation
+    /exit, /quit      - Exit the application
+    /refresh          - Refresh the file tree
+    /exec <command>   - Execute a shell command
+    /shell <command>  - Same as /exec
+    /ls               - List files (shortcut for /exec ls)
+    /pwd              - Show current directory (shortcut for /exec pwd)
+    /models           - List available Ollama models
+    /selectmodel <n>  - Select a model by number or name
+    /offline          - Switch to offline mode (no LLM)
+    /online           - Switch to online mode (try connecting to LLM)
+    /load <file>      - Load a file into context
+    /save <file>      - Save the conversation to a file
+    /reset            - Reset agent context and conversation
+    /yes, /y          - Approve the current file modification
+    /no, /n           - Reject the current file modification
+    /yesall, /ya      - Approve all pending file modifications
+    /noall, /na       - Reject all pending file modifications
+  
+  Keyboard shortcuts:
+    Ctrl+C            - Exit application
+    Ctrl+R            - Refresh file tree
+    Ctrl+L            - Clear conversation
+    Ctrl+S            - Save conversation
+    Ctrl+F            - Focus conversation panel (scroll mode)
+    Tab               - Cycle focus between panels
+    PageUp/PageDown   - Scroll conversation when focused
+    Up/Down arrows    - Scroll conversation when focused
+      `;
+      
     outputRenderer.addSystemMessage(helpText);
   }
 
+  /**
+   * Set offline mode
+   * 
+   * @param {boolean} offline Whether to enable offline mode
+   */
   async function setOfflineMode(offline) {
     try {
       const { createClient } = require('../api');
@@ -3368,6 +3522,7 @@ Available commands:
       outputRenderer.addErrorMessage(`Failed to change mode: ${error.message}`);
     }
   }
+  
   /**
    * Handle file modifications
    * 
@@ -3564,29 +3719,27 @@ Available commands:
       return;
     }
     
-    // Display user input
-  outputRenderer.addUserMessage(input);
-
-  try {
-    // Send to agent for processing
-    const response = await agent.processMessage(input);
-    
-    // Display assistant response
-    if (response && response.text) {
-      outputRenderer.addAssistantMessage(response.text);
+    try {
+      // Get conversation history
+      const history = agent.getConversationHistory();
       
-      // Check for file modifications
-      if (response.fileModifications && response.fileModifications.length > 0) {
-        await handleFileModifications(response.fileModifications);
-      }
-    } else {
-      outputRenderer.addErrorMessage('No response received from the agent.');
+      // Format conversation
+      const formatted = history.map(msg => {
+        return `${msg.role.toUpperCase()}:\n${msg.content}\n\n`;
+      }).join('---\n\n');
+      
+      // Resolve path
+      const fullPath = path.resolve(path.join(screen.cwd, filePath));
+      
+      // Write to file
+      const fs = require('fs').promises;
+      await fs.writeFile(fullPath, formatted, 'utf8');
+      
+      outputRenderer.addSystemMessage(`Conversation saved to: ${filePath}`);
+    } catch (error) {
+      logger.error(`Failed to save conversation: ${filePath}`, { error });
+      outputRenderer.addErrorMessage(`Error saving conversation: ${error.message}`);
     }
-  } catch (processingError) {
-    // Handle specific agent processing errors
-    logger.error('Agent processing error', { processingError });
-    outputRenderer.addErrorMessage(`Agent error: ${processingError.message}`);
-  }
   }
   
   // Initialize immediately
@@ -3641,6 +3794,9 @@ function createOutputRenderer({ widget, tokenMonitor }) {
     widget.log(message);
     widget.log(''); // Empty line for spacing
     
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
+    
     // Render the screen
     widget.screen.render();
   }
@@ -3670,6 +3826,9 @@ function createOutputRenderer({ widget, tokenMonitor }) {
     
     widget.log(''); // Empty line for spacing
     
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
+    
     // Render the screen
     widget.screen.render();
   }
@@ -3680,10 +3839,20 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} message Message text
    */
   function addSystemMessage(message) {
-    // Format and add the message
-    widget.log(chalk.bold.yellow('SYSTEM:'));
-    widget.log(chalk.yellow(message));
+    // Format and add the message with nicer formatting
+    widget.log(chalk.bold.yellow('┌─ SYSTEM ────────────────────────────────────'));
+    
+    // Split multi-line messages
+    const lines = message.split('\n');
+    lines.forEach(line => {
+      widget.log(chalk.yellow('│ ') + line);
+    });
+    
+    widget.log(chalk.bold.yellow('└────────────────────────────────────────────'));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();
@@ -3695,8 +3864,8 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} message Error message
    */
   function addErrorMessage(message) {
-    // Format and add the message
-    widget.log(chalk.bold.red('ERROR:'));
+    // Format and add the message with nicer formatting
+    widget.log(chalk.bold.red('┌─ ERROR ─────────────────────────────────────'));
     
     // Clean up any raw error text for better presentation
     const cleanedMessage = message
@@ -3706,8 +3875,17 @@ function createOutputRenderer({ widget, tokenMonitor }) {
       .replace(/connect ECONNREFUSED ::1:[0-9]+/g, 'Could not connect to Ollama API')
       .trim();
     
-    widget.log(chalk.red(cleanedMessage));
+    // Split multi-line error messages
+    const lines = cleanedMessage.split('\n');
+    lines.forEach(line => {
+      widget.log(chalk.red('│ ') + line);
+    });
+    
+    widget.log(chalk.bold.red('└────────────────────────────────────────────'));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();
@@ -3720,8 +3898,8 @@ function createOutputRenderer({ widget, tokenMonitor }) {
    * @param {string} language Programming language
    */
   function addCodeBlock(code, language = '') {
-    // Format the code block
-    widget.log(chalk.bold(`\`\`\`${language}`));
+    // Create a nicer code block header
+    widget.log(chalk.bold.cyan(`┌─ ${language || 'Code'} ${'─'.repeat(Math.max(0, 40 - language.length))}`));
     
     // Add the code with line numbers
     const lines = code.split('\n');
@@ -3729,14 +3907,18 @@ function createOutputRenderer({ widget, tokenMonitor }) {
       // Add line numbers for longer code blocks
       if (lines.length > 5) {
         const lineNum = String(index + 1).padStart(3, ' ');
-        widget.log(chalk.dim(`${lineNum} |`) + ' ' + line);
+        widget.log(chalk.dim(`│ ${lineNum} │`) + ' ' + line);
       } else {
-        widget.log(line);
+        widget.log(chalk.dim('│') + ' ' + line);
       }
     });
     
-    widget.log(chalk.bold('\`\`\`'));
+    // Add a nice footer
+    widget.log(chalk.bold.cyan(`└${'─'.repeat(44)}`));
     widget.log(''); // Empty line for spacing
+    
+    // Auto-scroll to bottom after adding new content
+    widget.setScrollPerc(100);
     
     // Render the screen
     widget.screen.render();
@@ -5137,6 +5319,8 @@ module.exports = {
 # src/utils/logger.js
 
 ```js
+// src/utils/logger.js - Complete rewrite to disable ALL console output
+
 /**
  * Logger module
  * 
@@ -5147,6 +5331,12 @@ const winston = require('winston');
 const fs = require('fs');
 const path = require('path');
 
+// Create logs directory if it doesn't exist
+const logsDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir);
+}
+
 // Custom log levels
 const levels = {
   error: 0,
@@ -5155,13 +5345,7 @@ const levels = {
   debug: 3
 };
 
-// Create logs directory if it doesn't exist
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir);
-}
-
-// Create winston logger
+// Create winston logger - NO CONSOLE TRANSPORT BY DEFAULT
 const logger = winston.createLogger({
   levels,
   format: winston.format.combine(
@@ -5187,24 +5371,26 @@ const logger = winston.createLogger({
   ]
 });
 
-// Add console transport by default
-logger.add(new winston.transports.Console({
-  format: winston.format.combine(
-    winston.format.colorize(),
-    winston.format.simple()
-  )
-}));
+// Store original console methods
+const originalConsole = {
+  log: console.log,
+  warn: console.warn,
+  error: console.error,
+  info: console.info,
+  debug: console.debug
+};
 
 /**
  * Set up logging based on configuration
  * 
  * @param {Object} config Logging configuration
+ * @param {boolean} isTUI Whether running in TUI mode
  */
-function setupLogging(config = {}) {
+function setupLogging(config = {}, isTUI = false) {
   // Default configuration
   const {
     level = 'info',
-    console = true,
+    console = !isTUI, // Disable console in TUI mode
     file = true,
     filePath,
     maxSize = '10m',
@@ -5214,34 +5400,8 @@ function setupLogging(config = {}) {
   // Set log level
   logger.level = level;
   
-  // Replace console transport if needed
-  if (console) {
-    // Remove existing console transports
-    logger.transports = logger.transports.filter(
-      t => t.name !== 'console'
-    );
-    
-    // Add new console transport
-    logger.add(new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.simple()
-      )
-    }));
-  } else {
-    // Remove console transports
-    logger.transports = logger.transports.filter(
-      t => t.name !== 'console'
-    );
-  }
-  
-  // Configure file transports if enabled
+  // Configure file transports
   if (file) {
-    // Remove existing file transports
-    logger.transports = logger.transports.filter(
-      t => t.name !== 'file'
-    );
-    
     // Custom log path or default
     const logPath = filePath || logsDir;
     
@@ -5249,28 +5409,99 @@ function setupLogging(config = {}) {
     if (!fs.existsSync(logPath)) {
       fs.mkdirSync(logPath, { recursive: true });
     }
-    
-    // Add configured file transports
-    logger.add(new winston.transports.File({
-      filename: path.join(logPath, 'error.log'),
-      level: 'error',
-      maxsize: maxSize,
-      maxFiles
-    }));
-    
-    logger.add(new winston.transports.File({
-      filename: path.join(logPath, 'combined.log'),
-      maxsize: maxSize,
-      maxFiles
-    }));
   }
   
-  logger.info('Logging initialized', { level });
+  // Override console methods in TUI mode
+  if (isTUI) {
+    // Redirect ALL console output to files in TUI mode
+    console.log = (...args) => {
+      logger.info(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+    };
+    
+    console.warn = (...args) => {
+      logger.warn(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+    };
+    
+    console.error = (...args) => {
+      logger.error(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+    };
+    
+    console.info = (...args) => {
+      logger.info(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+    };
+    
+    console.debug = (...args) => {
+      logger.debug(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+    };
+    
+    // Remove all console transports from Winston
+    logger.transports = logger.transports.filter(
+      t => t.name !== 'console'
+    );
+  } else {
+    // Restore console methods if not in TUI mode
+    console.log = originalConsole.log;
+    console.warn = originalConsole.warn;
+    console.error = originalConsole.error;
+    console.info = originalConsole.info;
+    console.debug = originalConsole.debug;
+    
+    // Add console transport to Winston if enabled
+    if (console) {
+      // Remove existing console transports
+      logger.transports = logger.transports.filter(
+        t => t.name !== 'console'
+      );
+      
+      // Add new console transport
+      logger.add(new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          winston.format.simple()
+        )
+      }));
+    }
+  }
+  
+  // Log initialization (to file only in TUI mode)
+  logger.info('Logging initialized', { level, isTUI });
+}
+
+// Create a special startup function to immediately disable console output
+function quietStartup() {
+  // Immediately redirect console to file
+  console.log = (...args) => {
+    logger.info(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+  };
+  
+  console.warn = (...args) => {
+    logger.warn(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+  };
+  
+  console.error = (...args) => {
+    logger.error(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+  };
+  
+  console.info = (...args) => {
+    logger.info(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+  };
+  
+  console.debug = (...args) => {
+    logger.debug(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' '));
+  };
+  
+  // Ensure no console transports
+  logger.transports = logger.transports.filter(
+    t => t.name !== 'console'
+  );
+  
+  logger.info('Console output redirected to file for TUI mode');
 }
 
 module.exports = {
   logger,
-  setupLogging
+  setupLogging,
+  quietStartup
 };
 ```
 

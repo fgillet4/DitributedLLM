@@ -377,28 +377,38 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
    */
   function showHelp() {
     const helpText = `
-Available commands:
-  /help             - Show this help text
-  /clear            - Clear the conversation
-  /exit, /quit      - Exit the application
-  /refresh          - Refresh the file tree
-  /exec <command>   - Execute a shell command
-  /shell <command>  - Same as /exec
-  /ls               - List files (shortcut for /exec ls)
-  /pwd              - Show current directory (shortcut for /exec pwd)
-  /models           - List available Ollama models
-  /selectmodel <n>  - Select a model by number or name
-  /offline          - Switch to offline mode (no LLM)
-  /online           - Switch to online mode (try connecting to LLM)
-  /load <file>      - Load a file into context
-  /save <file>      - Save the conversation to a file
-  /reset            - Reset agent context and conversation
-  /yes, /y          - Approve the current file modification
-  /no, /n           - Reject the current file modification
-  /yesall, /ya      - Approve all pending file modifications
-  /noall, /na       - Reject all pending file modifications
-    `;
-    
+  Available commands:
+    /help             - Show this help text
+    /clear            - Clear the conversation
+    /exit, /quit      - Exit the application
+    /refresh          - Refresh the file tree
+    /exec <command>   - Execute a shell command
+    /shell <command>  - Same as /exec
+    /ls               - List files (shortcut for /exec ls)
+    /pwd              - Show current directory (shortcut for /exec pwd)
+    /models           - List available Ollama models
+    /selectmodel <n>  - Select a model by number or name
+    /offline          - Switch to offline mode (no LLM)
+    /online           - Switch to online mode (try connecting to LLM)
+    /load <file>      - Load a file into context
+    /save <file>      - Save the conversation to a file
+    /reset            - Reset agent context and conversation
+    /yes, /y          - Approve the current file modification
+    /no, /n           - Reject the current file modification
+    /yesall, /ya      - Approve all pending file modifications
+    /noall, /na       - Reject all pending file modifications
+  
+  Keyboard shortcuts:
+    Ctrl+C            - Exit application
+    Ctrl+R            - Refresh file tree
+    Ctrl+L            - Clear conversation
+    Ctrl+S            - Save conversation
+    Ctrl+F            - Focus conversation panel (scroll mode)
+    Tab               - Cycle focus between panels
+    PageUp/PageDown   - Scroll conversation when focused
+    Up/Down arrows    - Scroll conversation when focused
+      `;
+      
     outputRenderer.addSystemMessage(helpText);
   }
 

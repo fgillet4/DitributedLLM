@@ -42,6 +42,7 @@ async function startApp(config) {
     let apiClient;
     
     // Check if offline mode is enabled
+    // Check if offline mode is enabled
     if (config.offline) {
       logger.info('Running in offline mode - no LLM connection will be attempted');
       
@@ -60,19 +61,35 @@ async function startApp(config) {
       };
     } else {
       // Normal mode - try to connect to LLM service
-      logger.info('Connecting to LLM service...');
+      // Check if we should use Ollama
+      const useOllama = config.llm.api === 'ollama';
       
-      // Add a try-catch to handle connection errors gracefully
+      logger.info(`Connecting to ${useOllama ? 'Ollama' : 'distributed LLM'} service...`);
+      
       try {
-        apiClient = createClient({
-          host: config.llm.coordinatorHost,
-          port: config.llm.coordinatorPort,
-          model: config.llm.model,
-          temperature: config.llm.temperature,
-          api: config.llm.api
-        });
-        
-        logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        if (useOllama) {
+          // Import the Ollama client
+          const { createOllamaClient } = require('./api');
+          
+          apiClient = createOllamaClient({
+            host: '127.0.0.1',
+            port: config.llm.coordinatorPort,
+            model: 'deepseek-r1:1.5b',  // Use the model you have installed
+            temperature: config.llm.temperature
+          });
+          
+          logger.info(`Attempting to connect to Ollama at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        } else {
+          apiClient = createClient({
+            host: config.llm.coordinatorHost,
+            port: config.llm.coordinatorPort,
+            model: config.llm.model,
+            temperature: config.llm.temperature,
+            api: config.llm.api
+          });
+          
+          logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        }
       } catch (error) {
         logger.error('Failed to create API client', { error });
         
