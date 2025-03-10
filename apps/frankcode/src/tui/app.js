@@ -12,6 +12,7 @@ const { createOutputRenderer } = require('./output');
 const { createStatusBar } = require('./statusBar');
 const { createFileTree } = require('./fileTree');
 const { logger } = require('../utils');
+const { createAgentCommandProcessor } = require('../agent/agentUtils');
 
 /**
  * Create the TUI application
@@ -31,7 +32,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     title: 'FrankCode',
     fullUnicode: true,
     dockBorders: true,
-    autoPadding: true
+    autoPadding: true,
+    sendFocus: false,
+    mouseEnabled: true,
+    useMouse: true
   });
 
   // Store config and project root in screen for access by components
@@ -75,8 +79,12 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     },
     // Add these settings for smoother scrolling
     mouse: true,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: true,
     keys: true,
-    vi: true,
+    vi: false,  // Turn off vi mode to enable normal selection
+    inputOnFocus: false,
     // Increase scroll amount for smoother experience
     scrollAmount: 3,
     // Lower scroll time for smoother animation
@@ -210,6 +218,34 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     screen
   });
 
+  try {
+    const agentCommandProcessor = createAgentCommandProcessor({
+      agent,
+      llm: apiClient,
+      screen,
+      outputRenderer
+    });
+  // Add to input handler
+  inputHandler.agentCommandProcessor = agentCommandProcessor;
+    
+  // Add help for agent commands
+  if (agentCommandProcessor) {
+    screen.key(['F1'], () => {
+      const exampleCommands = agentCommandProcessor.getExampleCommands();
+      
+      outputRenderer.addSystemMessage('\n📚 Agent Command Examples:');
+      exampleCommands.forEach(example => {
+        outputRenderer.addSystemMessage(`• ${example}`);
+      });
+      
+      outputRenderer.addSystemMessage('\nTry using these command patterns or press F1 again for more examples.');
+      screen.render();
+    });
+  }
+} catch (error) {
+  logger.error('Failed to initialize agent command processor:', error);
+  // Continue without agent capabilities
+}
   const renderInterval = setInterval(() => {
     screen.render();
   }, 100);
@@ -254,35 +290,25 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
 // Return the application object
 // Return the application object
 return {
-    screen,
-    statusBar: statusBarController,
-    start: () => {
-      // Initial rendering
-      screen.render();
-      
-      // Welcome message
-      outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
-      statusBarController.update('Ready');
-      
-      // Force render again after a short delay to ensure UI is properly displayed
-      setTimeout(() => {
-        screen.render();
-      }, 500);
-      
-      // Set up another timer to force periodic renders to keep UI responsive
-      setInterval(() => {
-        screen.render();
-      }, 1000);
-    },
-    destroy: () => {
-      if (renderInterval) {
-        clearInterval(renderInterval);
-      }
-      screen.destroy();
-    }
-  };
+  screen,
+  statusBar: statusBarController,
+  start: () => {
+    // Initial rendering
+    screen.render();
+    
+    // Welcome message
+    outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
+    statusBarController.update('Ready');
+    
+    // Other initialization...
+  },
+  destroy: () => {
+    // Cleanup code...
+    screen.destroy();
+  }
+};
 }
 
 module.exports = {
-  createApp
+createApp
 };

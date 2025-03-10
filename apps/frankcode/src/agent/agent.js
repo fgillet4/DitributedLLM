@@ -39,6 +39,49 @@ function createAgent({ apiClient, tokenMonitor, projectFiles, projectRoot }) {
     tokenMonitor,
     maxSize: tokenMonitor.getMaxTokens()
   });
+  /**
+   * Add system context to the conversation
+   * 
+   * @param {string} context System context to add
+   */
+  function addSystemContext(context) {
+    try {
+      // Add a system message to the conversation history
+      conversationHistory.push({ 
+        role: 'system', 
+        content: context 
+      });
+      
+      logger.debug('Added system context to conversation');
+    } catch (error) {
+      logger.error('Failed to add system context', { error });
+    }
+  }
+  // Update the reset function to optionally preserve system context
+  /**
+   * Reset the agent state
+   * 
+   * @param {boolean} preserveSystemContext Whether to preserve system context messages
+   */
+  function reset(preserveSystemContext = false) {
+    try {
+      if (preserveSystemContext) {
+        // Filter out non-system messages
+        const systemMessages = conversationHistory.filter(msg => msg.role === 'system');
+        conversationHistory = systemMessages;
+      } else {
+        conversationHistory = [];
+      }
+      
+      contextManager.reset();
+      logger.debug('Agent state reset');
+    } catch (error) {
+      logger.error('Failed to reset agent state', { error });
+      // Ensure we at least clear the conversation if there's an error
+      conversationHistory = [];
+      contextManager.reset();
+    }
+  }
   
   /**
    * Load content of a file and add to context
@@ -261,10 +304,8 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
     getContextManager: () => contextManager,
     getFileContexts: () => fileContexts,
     getConversationHistory: () => conversationHistory,
-    reset: () => {
-      conversationHistory = [];
-      contextManager.reset();
-    },
+    addSystemContext,  // Add this
+    reset,  // This should replace the existing reset function
     setApiClient: (newClient) => {
       apiClient = newClient;
     }

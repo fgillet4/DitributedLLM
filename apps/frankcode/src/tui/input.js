@@ -9,6 +9,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const path = require('path');
+const { createConversationManager } = require('../agent/conversationManager');
 
 /**
  * Create an input handler
@@ -29,6 +30,9 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   // File modification tracking
   const pendingModifications = [];
   let currentModificationIndex = -1;
+  
+  // Agent command processor - will be set after initialization
+  let agentCommandProcessor = null;
   
   // Initialize
   function init() {
@@ -84,7 +88,172 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       widget.screen.render(); // Ensure UI updates
     });
   }
+  /**
+   * Clear the conversation history
+   */
+  async function clearConversation() {
+    try {
+      // Reset the agent's conversation history
+      agent.reset();
+      
+      // Clear the output display
+      outputRenderer.clear();
+      
+      // Display confirmation message
+      outputRenderer.addSystemMessage('Conversation history cleared.');
+      
+      logger.info('Conversation history cleared by user');
+    } catch (error) {
+      logger.error('Failed to clear conversation', { error });
+      outputRenderer.addErrorMessage(`Error clearing conversation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate a summary of the conversation history
+   */
+  async function generateSummary() {
+    try {
+      // Get conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to summarize.');
+        return;
+      }
+      
+      // Format the conversation
+      const formattedHistory = history.map(msg => {
+        // Clean up the content (remove thinking tags)
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}: ${cleanContent.substring(0, 300)}${cleanContent.length > 300 ? '...' : ''}`;
+      }).join('\n\n');
+      
+      // Create prompt for the LLM
+      const prompt = `Create a concise summary of this conversation between a user and FrankCode (an AI coding assistant). Format it with clear sections for:
+
+  1. Main topics and tasks discussed
+  2. Problems solved or features implemented
+  3. Files modified or discussed
+  4. Next steps based on the conversation
+  5. The most important achievements
+
+  Use bold headers (**Header:**) and bullet points. Here's the conversation:
+
+  ${formattedHistory}`;
+      
+      // Generate summary using the LLM
+      outputRenderer.addSystemMessage('Generating conversation summary...');
+      
+      const response = await apiClient.generateResponse(prompt, {
+        temperature: 0.3,
+        maxTokens: 1024
+      });
+      
+      return response.text;
+    } catch (error) {
+      logger.error('Failed to generate summary', { error });
+      outputRenderer.addErrorMessage(`Error generating summary: ${error.message}`);
+      return 'Failed to generate summary.';
+    }
+  }
+
+  /**
+   * Compact the conversation with a summary
+   */
+  async function compactConversation() {
+    try {
+      // Generate summary
+      const summary = await generateSummary();
+      
+      if (!summary) {
+        return;
+      }
+      
+      // Reset the agent state
+      agent.reset();
+      
+      // Add summary as context
+      agent.addSystemContext(summary);
+      
+      // Clear the output display
+      outputRenderer.clear();
+      
+      // Display the summary
+      outputRenderer.addSystemMessage('***Session Summary***');
+      
+      // Format and display the summary
+      const summaryLines = summary.split('\n');
+      for (const line of summaryLines) {
+        outputRenderer.addSystemMessage(line);
+      }
+      
+      outputRenderer.addSystemMessage('\nConversation history has been compacted. The summary above has been retained in context.');
+      
+      logger.info('Conversation compacted with summary');
+    } catch (error) {
+      logger.error('Failed to compact conversation', { error });
+      outputRenderer.addErrorMessage(`Error compacting conversation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export the conversation to a file
+   */
+  async function exportConversation(filePath) {
+    try {
+      // Create default filename if none provided
+      if (!filePath) {
+        filePath = `conversation_${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+      }
+      
+      // Get absolute path
+      const fullPath = path.isAbsolute(filePath) ? filePath : path.join(screen.cwd, filePath);
+      
+      // Get conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to export.');
+        return;
+      }
+      
+      // Generate summary
+      const summary = await generateSummary();
+      
+      // Format the conversation (remove thinking tags)
+      const formattedHistory = history.map(msg => {
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
+      }).join('');
+      
+      // Combine summary and history
+      const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+      
+      // Ensure directory exists
+      const dirPath = path.dirname(fullPath);
+      try {
+        await require('fs').promises.mkdir(dirPath, { recursive: true });
+      } catch (error) {
+        // Ignore directory exists error
+      }
+      
+      // Write to file
+      await require('fs').promises.writeFile(fullPath, content, 'utf8');
+      
+      outputRenderer.addSystemMessage(`Conversation with summary exported to ${fullPath}`);
+      logger.info(`Conversation exported to ${fullPath}`);
+    } catch (error) {
+      logger.error('Failed to export conversation', { error });
+      outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+    }
+  }
   
+  /**
+   * Process user input
+   * 
+   * @param {string} input User input
+   */
   /**
    * Process user input
    * 
@@ -101,6 +270,14 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       // Display user input
       outputRenderer.addUserMessage(input);
       
+      // Check if this might be an agent task
+      if (agentCommandProcessor && agentCommandProcessor.isPotentialAgentTask(input)) {
+        const wasHandled = await agentCommandProcessor.processCommand(input);
+        if (wasHandled) {
+          return;
+        }
+      }
+      
       try {
         // Send to agent for processing
         const response = await agent.processMessage(input);
@@ -112,6 +289,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           // Check for file modifications
           if (response.fileModifications && response.fileModifications.length > 0) {
             await handleFileModifications(response.fileModifications);
+          }
+          
+          // Check if this looks like a potential agent task that wasn't recognized
+          const suggestion = agentCommandProcessor ? agentCommandProcessor.suggestAgentCapability(input) : null;
+          if (suggestion) {
+            outputRenderer.addSystemMessage(`💡 ${suggestion}`);
+            
+            // Show examples occasionally (20% chance)
+            if (Math.random() < 0.2) {
+              const examples = agentCommandProcessor.getExampleCommands();
+              const randomExample = examples[Math.floor(Math.random() * examples.length)];
+              outputRenderer.addSystemMessage(`Example: "${randomExample}"`);
+            }
           }
         } else {
           outputRenderer.addErrorMessage('No response received from the agent.');
@@ -160,10 +350,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           break;
         
         case 'clear':
-          outputRenderer.clear();
+          await clearConversation();
           break;
         
+        case 'compact':
+          await compactConversation();
+          break;
+        
+        case 'export':
+          await exportConversation(args[0]);
+          break;
         case 'exit':
+          process.exit(0);
+          break;
         case 'quit':
           process.exit(0);
           break;
@@ -237,6 +436,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           
         case 'online':
           setOfflineMode(false);
+          break;
+
+        case 'agent':
+          if (args.length > 0) {
+            const task = args.join(' ');
+            if (agentCommandProcessor) {
+              await agentCommandProcessor.executeTask(task);
+            } else {
+              outputRenderer.addErrorMessage('Agent command processor not initialized');
+            }
+          } else {
+            outputRenderer.addSystemMessage('Please provide a task for the agent');
+          }
           break;
         
         default:
@@ -379,8 +591,9 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     const helpText = `
   Available commands:
     /help             - Show this help text
-    /clear            - Clear the conversation
-    /exit, /quit      - Exit the application
+    /clear            - Clear the conversation history
+    /compact          - Compact conversation history into a summary
+    /export [file]    - Export conversation with summary to a file    /exit, /quit      - Exit the application
     /refresh          - Refresh the file tree
     /exec <command>   - Execute a shell command
     /shell <command>  - Same as /exec
@@ -685,14 +898,28 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     }
   }
   
-  // Initialize immediately
   init();
-  
+
+  // Create conversation manager
+  let conversationManager = null;
+  try {
+    conversationManager = createConversationManager({
+      agent,
+      outputRenderer,
+      llm: apiClient
+    });
+    logger.debug('Conversation manager initialized');
+  } catch (error) {
+    logger.error('Failed to initialize conversation manager', { error });
+  }
+
   // Return the input handler interface
   return {
     processInput,
     processCommand,
-    handleFileModifications
+    handleFileModifications,
+    agentCommandProcessor, // Allow setting from outside
+    conversationManager    // Add this to make it accessible from outside if needed
   };
 }
 

@@ -1,0 +1,20 @@
+USER:
+hello
+
+---
+
+ASSISTANT:
+<think>
+Alright, so the user just sent me a message asking for help. Let's see, I'm supposed to act as FrankCode, an AI assistant for developers. Okay, first thing that comes to mind is that they're probably starting fresh with their project and need some guidance.
+
+Looking at their current context, they have a JSON file in the apps directory but no functions or classes. They just sent two lines of text, "hello" twice. Hmm, maybe they want me to help them write something for this JSON file? But since I can't modify that file directly, perhaps I should suggest adding code that connects it to their project.
+
+I remember there's a tool called tsconfig.json used in Node.js projects. Maybe they need to set up some configuration files like tsconfig.json and tsconfig.jsonb (for TypeScript). That way, my assistant can generate the necessary configuration for running this file as a server or something else.
+
+Also, if I were part of their codebase, they might have specific modules or imports that are missing. I should consider advising them on how to check out or modify any existing dependencies in their project and ensure all required files are included.
+
+I wonder if there's more context from their end beyond the initial messages. Maybe they're encountering a problem that can't be resolved with my general advice, so it's worth asking them about what they need help with specifically.
+</think>
+
+To assist you effectively, could you clarify or provide specific details about your project and any issues you're facing?
+

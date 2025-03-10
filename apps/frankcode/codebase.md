@@ -255,6 +255,32 @@ module.exports = {
   };
 ```
 
+# conversation.txt
+
+```txt
+USER:
+hello
+
+---
+
+ASSISTANT:
+<think>
+Alright, so the user just sent me a message asking for help. Let's see, I'm supposed to act as FrankCode, an AI assistant for developers. Okay, first thing that comes to mind is that they're probably starting fresh with their project and need some guidance.
+
+Looking at their current context, they have a JSON file in the apps directory but no functions or classes. They just sent two lines of text, "hello" twice. Hmm, maybe they want me to help them write something for this JSON file? But since I can't modify that file directly, perhaps I should suggest adding code that connects it to their project.
+
+I remember there's a tool called tsconfig.json used in Node.js projects. Maybe they need to set up some configuration files like tsconfig.json and tsconfig.jsonb (for TypeScript). That way, my assistant can generate the necessary configuration for running this file as a server or something else.
+
+Also, if I were part of their codebase, they might have specific modules or imports that are missing. I should consider advising them on how to check out or modify any existing dependencies in their project and ensure all required files are included.
+
+I wonder if there's more context from their end beyond the initial messages. Maybe they're encountering a problem that can't be resolved with my general advice, so it's worth asking them about what they need help with specifically.
+</think>
+
+To assist you effectively, could you clarify or provide specific details about your project and any issues you're facing?
+
+
+```
+
 # jest.config.js
 
 ```js
@@ -287,55 +313,59 @@ module.exports = {
     "description": "Terminal-based coding agent powered by distributed LLMs",
     "main": "src/index.js",
     "bin": {
-      "frankcode": "./bin/frankcode.js"
+        "frankcode": "./bin/frankcode.js"
     },
     "scripts": {
-      "start": "node src/index.js",
-      "test": "jest",
-      "lint": "eslint .",
-      "format": "prettier --write \"**/*.{js,json}\"",
-      "build": "npm run lint && npm run test"
+        "start": "node src/index.js",
+        "test": "jest",
+        "lint": "eslint .",
+        "format": "prettier --write \"**/*.{js,json}\"",
+        "build": "npm run lint && npm run test"
     },
     "keywords": [
-      "ai",
-      "coding-assistant",
-      "terminal",
-      "tui",
-      "llm",
-      "distributed"
+        "ai",
+        "coding-assistant",
+        "terminal",
+        "tui",
+        "llm",
+        "distributed"
     ],
     "author": "",
     "license": "MIT",
     "dependencies": {
-      "blessed": "^0.1.81",
-      "blessed-contrib": "^4.11.0",
-      "chalk": "^4.1.2",
-      "commander": "^9.4.1",
-      "cosmiconfig": "^8.0.0",
-      "diff": "^5.1.0",
-      "dotenv": "^16.0.3",
-      "fast-glob": "^3.2.12",
-      "ignore": "^5.2.4",
-      "isomorphic-git": "^1.21.0",
-      "keytar": "^7.9.0",
-      "node-fetch": "^2.6.9",
-      "simple-git": "^3.16.0",
-      "tiktoken": "^1.0.3",
-      "winston": "^3.8.2",
-      "ws": "^8.12.1"
+        "blessed": "^0.1.81",
+        "blessed-contrib": "^4.11.0",
+        "chalk": "^4.1.2",
+        "commander": "^9.4.1",
+        "cors": "^2.8.5",
+        "cosmiconfig": "^8.0.0",
+        "diff": "^5.1.0",
+        "dotenv": "^16.4.7",
+        "express": "^4.21.2",
+        "fast-glob": "^3.2.12",
+        "ignore": "^5.2.4",
+        "isomorphic-git": "^1.21.0",
+        "keytar": "^7.9.0",
+        "ngrok": "^5.0.0-beta.2",
+        "node-fetch": "^2.7.0",
+        "simple-git": "^3.16.0",
+        "tiktoken": "^1.0.3",
+        "winston": "^3.8.2",
+        "ws": "^8.12.1"
     },
     "devDependencies": {
-      "eslint": "^8.34.0",
-      "eslint-config-prettier": "^8.6.0",
-      "eslint-plugin-node": "^11.1.0",
-      "eslint-plugin-prettier": "^4.2.1",
-      "jest": "^29.4.3",
-      "prettier": "^2.8.4"
+        "eslint": "^8.34.0",
+        "eslint-config-prettier": "^8.6.0",
+        "eslint-plugin-node": "^11.1.0",
+        "eslint-plugin-prettier": "^4.2.1",
+        "jest": "^29.4.3",
+        "prettier": "^2.8.4"
     },
     "engines": {
-      "node": ">=14.0.0"
+        "node": ">=14.0.0"
     }
-  }
+}
+
 ```
 
 # README.md
@@ -525,6 +555,49 @@ function createAgent({ apiClient, tokenMonitor, projectFiles, projectRoot }) {
     tokenMonitor,
     maxSize: tokenMonitor.getMaxTokens()
   });
+  /**
+   * Add system context to the conversation
+   * 
+   * @param {string} context System context to add
+   */
+  function addSystemContext(context) {
+    try {
+      // Add a system message to the conversation history
+      conversationHistory.push({ 
+        role: 'system', 
+        content: context 
+      });
+      
+      logger.debug('Added system context to conversation');
+    } catch (error) {
+      logger.error('Failed to add system context', { error });
+    }
+  }
+  // Update the reset function to optionally preserve system context
+  /**
+   * Reset the agent state
+   * 
+   * @param {boolean} preserveSystemContext Whether to preserve system context messages
+   */
+  function reset(preserveSystemContext = false) {
+    try {
+      if (preserveSystemContext) {
+        // Filter out non-system messages
+        const systemMessages = conversationHistory.filter(msg => msg.role === 'system');
+        conversationHistory = systemMessages;
+      } else {
+        conversationHistory = [];
+      }
+      
+      contextManager.reset();
+      logger.debug('Agent state reset');
+    } catch (error) {
+      logger.error('Failed to reset agent state', { error });
+      // Ensure we at least clear the conversation if there's an error
+      conversationHistory = [];
+      contextManager.reset();
+    }
+  }
   
   /**
    * Load content of a file and add to context
@@ -747,10 +820,8 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
     getContextManager: () => contextManager,
     getFileContexts: () => fileContexts,
     getConversationHistory: () => conversationHistory,
-    reset: () => {
-      conversationHistory = [];
-      contextManager.reset();
-    },
+    addSystemContext,  // Add this
+    reset,  // This should replace the existing reset function
     setApiClient: (newClient) => {
       apiClient = newClient;
     }
@@ -759,6 +830,227 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
 
 module.exports = {
   createAgent
+};
+```
+
+# src/agent/agentUtils.js
+
+```js
+/**
+ * Agent Utilities
+ * 
+ * Helper functions for integrating agent capabilities with the FrankCode TUI
+ */
+
+const { logger } = require('../utils/logger');
+const { createAgentRunner } = require('./runner');
+
+/**
+ * Create an agent command processor
+ * 
+ * @param {Object} options Configuration options
+ * @param {Object} options.agent Agent instance
+ * @param {Object} options.llm LLM client
+ * @param {Object} options.screen Blessed screen object
+ * @param {Object} options.outputRenderer Output renderer
+ * @returns {Object} Command processor interface
+ */
+function createAgentCommandProcessor({ agent, llm, screen, outputRenderer }) {
+  // Create agent runner
+  const runner = createAgentRunner({ 
+    llm, 
+    screen, 
+    outputRenderer,
+    agent
+  });
+
+  // Command patterns
+  const taskCommandPattern = /^(implement|create|build|add|refactor|fix|optimize)\s+(.+)$/i;
+  const analyzeCommandPattern = /^(analyze|examine|check|review)\s+(.+)$/i;
+  const explainCommandPattern = /^(explain|how|why)\s+(.+)$/i;
+  
+  /**
+   * Process a user command and detect if it's an agent task
+   * 
+   * @param {string} command User command
+   * @returns {Promise<boolean>} Whether the command was handled
+   */
+  async function processCommand(command) {
+    try {
+      // Normalize command
+      const normalizedCommand = command.trim();
+      
+      // Check if this is a task command
+      const taskMatch = taskCommandPattern.exec(normalizedCommand);
+      if (taskMatch) {
+        const verb = taskMatch[1].toLowerCase();
+        const task = taskMatch[2];
+        
+        // Execute the task
+        await runner.executeTask(`${verb} ${task}`);
+        return true;
+      }
+      
+      // Check if this is an analyze command
+      const analyzeMatch = analyzeCommandPattern.exec(normalizedCommand);
+      if (analyzeMatch) {
+        const verb = analyzeMatch[1].toLowerCase();
+        const target = analyzeMatch[2];
+        
+        // Execute analysis action
+        await runner.executeAction({
+          type: runner.ActionType.ANALYZE,
+          description: `${verb} ${target}`,
+          reasoning: 'User requested analysis'
+        });
+        return true;
+      }
+      
+      // Check if this is an explain command
+      const explainMatch = explainCommandPattern.exec(normalizedCommand);
+      if (explainMatch) {
+        const verb = explainMatch[1].toLowerCase();
+        const question = explainMatch[2];
+        
+        // Execute question answering action
+        await runner.executeAction({
+          type: runner.ActionType.ANSWER_QUESTION,
+          description: `${verb} ${question}`,
+          reasoning: 'User asked a question'
+        });
+        return true;
+      }
+      
+      // Check for explicit file operations
+      if (normalizedCommand.startsWith('read ')) {
+        const filePath = normalizedCommand.substring(5).trim();
+        await runner.executeAction({
+          type: runner.ActionType.READ_FILE,
+          description: `Read the file ${filePath}`,
+          files: [filePath]
+        });
+        return true;
+      }
+      
+      if (normalizedCommand.startsWith('find ')) {
+        const pattern = normalizedCommand.substring(5).trim();
+        await runner.executeAction({
+          type: runner.ActionType.SEARCH_FILES,
+          description: `Find files matching ${pattern}`,
+          files: [pattern]
+        });
+        return true;
+      }
+      
+      // Not an agent command
+      return false;
+    } catch (error) {
+      logger.error('Error processing agent command', { error });
+      outputRenderer.addErrorMessage(`Error: ${error.message}`);
+      return true; // Mark as handled to prevent further processing
+    }
+  }
+  
+  /**
+   * Check if a command looks like it might be a task for the agent
+   * 
+   * @param {string} command User command
+   * @returns {boolean} Whether it looks like an agent task
+   */
+  function isPotentialAgentTask(command) {
+    const normalizedCommand = command.trim().toLowerCase();
+    
+    // Check against command patterns
+    if (taskCommandPattern.test(normalizedCommand)) return true;
+    if (analyzeCommandPattern.test(normalizedCommand)) return true;
+    if (explainCommandPattern.test(normalizedCommand)) return true;
+    
+    // Check for explicit file operations
+    if (normalizedCommand.startsWith('read ')) return true;
+    if (normalizedCommand.startsWith('find ')) return true;
+    
+    // Look for programming-related terms that might indicate a task
+    const programmingTerms = [
+      'function', 'component', 'class', 'method',
+      'module', 'interface', 'feature', 'bug',
+      'performance', 'memory', 'leak', 'api',
+      'endpoint', 'database', 'schema', 'model',
+      'route', 'controller', 'view', 'template',
+      'test', 'unit test', 'integration test',
+      'authentication', 'authorization', 'security',
+      'deploy', 'pipeline', 'build', 'docker',
+      'caching', 'logging', 'error handling'
+    ];
+    
+    return programmingTerms.some(term => normalizedCommand.includes(term));
+  }
+  
+  /**
+   * Suggest using agent capabilities
+   * 
+   * @param {string} command User command
+   * @returns {string|null} Suggestion or null if none
+   */
+  function suggestAgentCapability(command) {
+    const normalizedCommand = command.trim().toLowerCase();
+    
+    // Detect questions
+    if (normalizedCommand.includes('how do i') || 
+        normalizedCommand.includes('how to') ||
+        normalizedCommand.includes('what is') ||
+        normalizedCommand.includes('why does')) {
+      return "It looks like you're asking a question. Try starting with 'explain' or 'how' for detailed explanations.";
+    }
+    
+    // Detect potential tasks
+    if (normalizedCommand.length > 15 && isPotentialAgentTask(normalizedCommand)) {
+      return "This seems like a task I could help with. Try using task verbs like 'implement', 'create', 'fix', or 'refactor'.";
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Get a list of example agent commands
+   * 
+   * @returns {Array<string>} Example commands
+   */
+  function getExampleCommands() {
+    return [
+      "implement a function to sort users by creation date",
+      "create a new React component for displaying user profiles",
+      "fix the memory leak in the connection manager",
+      "refactor the authentication module to use JWT",
+      "analyze the performance bottlenecks in the data processing pipeline",
+      "explain how the routing system works in this codebase",
+      "read src/utils/formatters.js",
+      "find all files related to authentication"
+    ];
+  }
+  
+  /**
+   * Execute a specific agent task
+   * 
+   * @param {string} task Task description
+   * @returns {Promise<Object>} Task result
+   */
+  async function executeTask(task) {
+    return await runner.executeTask(task);
+  }
+  
+  // Return the command processor interface
+  return {
+    processCommand,
+    isPotentialAgentTask,
+    suggestAgentCapability,
+    getExampleCommands,
+    executeTask,
+    runner
+  };
+}
+
+module.exports = {
+  createAgentCommandProcessor
 };
 ```
 
@@ -1042,6 +1334,289 @@ module.exports = {
 };
 ```
 
+# src/agent/conversationManager.js
+
+```js
+/**
+ * Improved Conversation Management Module for FrankCode
+ * 
+ * Provides utilities for managing conversation history,
+ * including clearing, compacting, and summarizing.
+ */
+
+const { logger } = require('../utils/logger');
+const fs = require('fs').promises;
+const path = require('path');
+
+/**
+ * Create a conversation manager
+ * 
+ * @param {Object} options Configuration options
+ * @param {Object} options.agent Agent instance
+ * @param {Object} options.outputRenderer Output renderer
+ * @param {Object} options.llm LLM client
+ * @returns {Object} The conversation manager interface
+ */
+function createConversationManager({ agent, outputRenderer, llm }) {
+  /**
+   * Clear the conversation history
+   * 
+   * @returns {Promise<void>}
+   */
+  async function clearConversation() {
+    try {
+      // Reset the agent's conversation history
+      agent.reset();
+      
+      // Clear the output renderer
+      outputRenderer.clear();
+      
+      // Display confirmation message
+      outputRenderer.addSystemMessage('Conversation history cleared.');
+      
+      logger.info('Conversation history cleared by user');
+    } catch (error) {
+      logger.error('Failed to clear conversation', { error });
+      outputRenderer.addErrorMessage(`Error clearing conversation: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Compact the conversation by summarizing and clearing history
+   * 
+   * @returns {Promise<void>}
+   */
+  async function compactConversation() {
+    try {
+      // Get the current conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to compact.');
+        return;
+      }
+      
+      outputRenderer.addSystemMessage('Compacting conversation...');
+      
+      // Generate a summary of the conversation
+      const summary = await generateConversationSummary(history);
+      
+      // Reset the agent's conversation history but preserve system messages
+      agent.reset(true);
+      
+      // Add the summary as system context
+      agent.addSystemContext(summary);
+      
+      // Clear the output display
+      outputRenderer.clear();
+      
+      // Display the summary with proper formatting
+      outputRenderer.addSystemMessage('***Session Summary***');
+      
+      // Split the summary into lines and add with proper formatting
+      const summaryLines = summary.split('\n');
+      for (const line of summaryLines) {
+        outputRenderer.addSystemMessage(line);
+      }
+      
+      outputRenderer.addSystemMessage('\nConversation history has been compacted. The summary above has been retained in context.');
+      
+      logger.info('Conversation compacted with summary');
+    } catch (error) {
+      logger.error('Failed to compact conversation', { error });
+      outputRenderer.addErrorMessage(`Error compacting conversation: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Generate a summary of the conversation history
+   * 
+   * @param {Array<Object>} history Conversation history
+   * @returns {Promise<string>} Summary text
+   */
+  async function generateConversationSummary(history) {
+    try {
+      if (!history || history.length === 0) {
+        return "No conversation history to summarize.";
+      }
+      
+      // Filter out system messages and thinking tags
+      const filteredHistory = history.filter(msg => 
+        msg.role !== 'system'
+      ).map(msg => ({
+        role: msg.role,
+        content: msg.content.replace(/<think>[\s\S]*?<\/think>/g, '') // Remove thinking tags
+      }));
+      
+      if (filteredHistory.length === 0) {
+        return "No user-assistant interactions to summarize.";
+      }
+      
+      // Format the conversation history
+      const formattedHistory = filteredHistory.map(msg => 
+        `${msg.role.toUpperCase()}: ${msg.content.substring(0, 500)}${msg.content.length > 500 ? '...' : ''}`
+      ).join('\n\n');
+      
+      // Create a prompt for the LLM to generate a summary
+      const prompt = `I need you to create a structured summary of the following conversation between a user and FrankCode, an AI coding assistant. Format the summary like this example:
+
+We've been working on a chemical process simulation application, focusing on fixing display and calculation issues in the heat exchanger components. Here's what we've accomplished:
+
+**Main Issues Fixed:**
+
+1. **Heat Exchanger Duty Display**
+  - Fixed an issue where the heat exchanger duty wasn't updating correctly
+  - Added forced numeric conversion to ensure duty values display correctly
+  - Enhanced logging to trace calculation steps and verify values
+
+2. **Property Display Improvements**
+  - Added "Show Properties on Flowsheet" toggle in component configuration modals
+  - Reverted flow rate formatting to maintain readability for large values
+  - Fixed precision issues in numeric displays
+
+**Main Files Modified:**
+
+1. **/src/lib/simulation.ts**
+  - Enhanced calculateHeatDuty() with better logging
+  - Fixed the HeatExchangerNode.calculate() method
+  - Added deep object cloning to avoid reference issues
+
+**Next Steps:**
+
+1. Test heat exchanger calculations with different flow rates
+2. Verify connection configuration modal works as expected
+3. Look into other components that may need similar display improvements
+
+The most critical fixes were ensuring that changing boundary inflow properly propagates through the simulation.
+
+Here's the conversation to summarize:
+
+${formattedHistory}
+
+Create a similar summary that:
+1. Identifies the main topics and tasks discussed
+2. Lists specific problems solved or features implemented 
+3. Mentions key files or components that were modified or discussed
+4. Suggests logical next steps based on the conversation
+5. Highlights the most important achievements or insights
+
+Format with clear sections using **bold** for headers and bullet points for details. Keep the summary concise but comprehensive.`;
+      
+      // Generate the summary using the LLM
+      const response = await llm.generateResponse(prompt, {
+        temperature: 0.3,  // Lower temperature for more factual summaries
+        maxTokens: 1024    // Allow enough tokens for a detailed summary
+      });
+      
+      return response.text;
+    } catch (error) {
+      logger.error('Failed to generate conversation summary', { error });
+      return 'Failed to generate summary. The conversation history has still been cleared.';
+    }
+  }
+  
+  /**
+   * Save the conversation to a file
+   * 
+   * @param {string} filePath File path
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function saveConversation(filePath) {
+    try {
+      // Get the conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to save.');
+        return false;
+      }
+      
+      // Format the conversation for saving
+      const formattedHistory = history.map(msg => {
+        // Remove thinking tags for cleaner export
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
+      }).join('');
+      
+      // Ensure directory exists
+      const dirPath = path.dirname(filePath);
+      await fs.mkdir(dirPath, { recursive: true }).catch(() => {});
+      
+      // Write to file
+      await fs.writeFile(filePath, formattedHistory, 'utf8');
+      
+      outputRenderer.addSystemMessage(`Conversation saved to ${filePath}`);
+      logger.info(`Conversation saved to ${filePath}`);
+      
+      return true;
+    } catch (error) {
+      logger.error('Failed to save conversation', { error });
+      outputRenderer.addErrorMessage(`Error saving conversation: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Export conversation with summary
+   * 
+   * @param {string} filePath File path
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function exportConversationWithSummary(filePath) {
+    try {
+      // Get the conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to export.');
+        return false;
+      }
+      
+      // Generate a summary
+      const summary = await generateConversationSummary(history);
+      
+      // Format the conversation for saving (remove thinking tags)
+      const formattedHistory = history.map(msg => {
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
+      }).join('');
+      
+      // Combine summary and full history
+      const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+      
+      // Ensure directory exists
+      const dirPath = path.dirname(filePath);
+      await fs.mkdir(dirPath, { recursive: true }).catch(() => {});
+      
+      // Write to file
+      await fs.writeFile(filePath, content, 'utf8');
+      
+      outputRenderer.addSystemMessage(`Conversation with summary exported to ${filePath}`);
+      logger.info(`Conversation exported to ${filePath}`);
+      
+      return true;
+    } catch (error) {
+      logger.error('Failed to export conversation', { error });
+      outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+      return false;
+    }
+  }
+  
+  // Return the conversation manager interface
+  return {
+    clearConversation,
+    compactConversation,
+    saveConversation,
+    exportConversationWithSummary,
+    generateConversationSummary
+  };
+}
+
+module.exports = {
+  createConversationManager
+};
+```
+
 # src/agent/fileManager.js
 
 ```js
@@ -1265,6 +1840,1130 @@ module.exports = {
 };
 ```
 
+# src/agent/runner.js
+
+```js
+/**
+ * Agent Runner for FrankCode
+ * 
+ * This module is responsible for executing agent actions,
+ * coordinating between the LLM, tools, and user interface.
+ */
+
+const { logger } = require('../utils/logger');
+const fileOperations = require('./tools/fileOperations');
+const { confirmOperation } = require('../tui/confirmation');
+const { createTaskPlanner } = require('./taskPlanner');
+
+/**
+ * Agent Action Types
+ */
+const ActionType = {
+  READ_FILE: 'read_file',
+  SEARCH_FILES: 'search_files',
+  UPDATE_FILE: 'update_file',
+  CREATE_FILE: 'create_file',
+  DELETE_FILE: 'delete_file',
+  GENERATE_CODE: 'generate_code',
+  ANALYZE: 'analyze',
+  ANSWER_QUESTION: 'answer_question'
+};
+
+/**
+ * Create an agent runner
+ * 
+ * @param {Object} options Configuration options
+ * @param {Object} options.llm LLM client
+ * @param {Object} options.screen Blessed screen object
+ * @param {Object} options.outputRenderer Output renderer
+ * @param {Object} options.agent Agent instance
+ * @returns {Object} Agent runner interface
+ */
+function createAgentRunner({ llm, screen, outputRenderer, agent }) {
+  // Store preferences
+  let autoConfirm = false;
+  
+  // Create task planner
+  const taskPlanner = createTaskPlanner({ llm, agent });
+  
+  // Track the current task execution
+  let currentTask = null;
+  let currentPlan = [];
+  let currentStepIndex = 0;
+  
+  /**
+   * Execute a complex task by breaking it down and sequentially processing steps
+   * 
+   * @param {string} taskDescription Description of the task
+   * @returns {Promise<Object>} Task result
+   */
+  async function executeTask(taskDescription) {
+    try {
+      // Initialize task tracking
+      currentTask = taskDescription;
+      currentStepIndex = 0;
+      
+      // Add system message
+      outputRenderer.addSystemMessage(`🧠 Analyzing task: ${taskDescription}`);
+      
+      // Get the current context from the agent
+      const context = agent.getContextManager().getCurrentContext();
+      
+      // Create a plan for the task
+      currentPlan = await taskPlanner.planTask(taskDescription, context);
+      
+      // If planning failed, return error
+      if (currentPlan.length === 0 || (currentPlan.length === 1 && currentPlan[0].type === 'error')) {
+        outputRenderer.addErrorMessage('Failed to create a plan for this task. Please try being more specific.');
+        return { status: 'error', error: 'Failed to create plan' };
+      }
+      
+      // Display the plan
+      outputRenderer.addSystemMessage(`📋 Task Plan (${currentPlan.length} steps):`);
+      
+      currentPlan.forEach((step, index) => {
+        outputRenderer.addSystemMessage(`${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
+      });
+      
+      // Assess task difficulty
+      const difficulty = taskPlanner.assessTaskDifficulty(taskDescription, currentPlan);
+      outputRenderer.addSystemMessage(`⏱️ Estimated time: ~${difficulty.estimatedMinutes} minute${difficulty.estimatedMinutes > 1 ? 's' : ''} (${difficulty.difficulty} complexity)`);
+      
+      // Execute each step in the plan
+      for (currentStepIndex = 0; currentStepIndex < currentPlan.length; currentStepIndex++) {
+        const step = currentPlan[currentStepIndex];
+        
+        // Display current step
+        outputRenderer.addSystemMessage(`\n▶️ Step ${currentStepIndex + 1}/${currentPlan.length}: ${step.description}`);
+        
+        // Execute the step
+        const stepResult = await executeStep(step);
+        
+        // Handle step failure
+        if (stepResult.status === 'error') {
+          outputRenderer.addErrorMessage(`Failed to complete step ${currentStepIndex + 1}: ${stepResult.error}`);
+          
+          // Ask the LLM for recovery suggestions
+          const recoveryResult = await suggestRecovery(step, stepResult.error);
+          outputRenderer.addSystemMessage(`💡 Recovery suggestion: ${recoveryResult.suggestion}`);
+          
+          // We may want to continue with next steps even if one fails
+          if (recoveryResult.fatal) {
+            outputRenderer.addErrorMessage('Cannot continue with the task due to critical error.');
+            return { status: 'error', error: stepResult.error, completedSteps: currentStepIndex };
+          }
+        } else if (stepResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Completed step ${currentStepIndex + 1}`);
+        }
+        
+        // Force render after each step
+        screen.render();
+      }
+      
+      // Task completed successfully
+      outputRenderer.addSystemMessage(`\n✅ Task completed successfully!`);
+      
+      return { 
+        status: 'success',
+        steps: currentPlan.length,
+        completedSteps: currentStepIndex
+      };
+    } catch (error) {
+      logger.error(`Failed to execute task: ${taskDescription}`, { error });
+      outputRenderer.addErrorMessage(`Error executing task: ${error.message}`);
+      
+      return { 
+        status: 'error', 
+        error: error.message,
+        completedSteps: currentStepIndex
+      };
+    } finally {
+      // Reset the task tracking
+      currentTask = null;
+      currentPlan = [];
+      currentStepIndex = 0;
+    }
+  }
+  
+  /**
+   * Execute a single step from the plan
+   * 
+   * @param {Object} step Step to execute
+   * @returns {Promise<Object>} Step result
+   */
+  async function executeStep(step) {
+    try {
+      logger.debug(`Executing step: ${step.type}`, { step });
+      
+      switch (step.type) {
+        case ActionType.READ_FILE:
+          return await executeReadFile(step);
+        
+        case ActionType.SEARCH_FILES:
+          return await executeSearchFiles(step);
+        
+        case ActionType.UPDATE_FILE:
+          return await executeUpdateFile(step);
+        
+        case ActionType.CREATE_FILE:
+          return await executeCreateFile(step);
+        
+        case ActionType.DELETE_FILE:
+          return await executeDeleteFile(step);
+        
+        case ActionType.GENERATE_CODE:
+          return await executeGenerateCode(step);
+        
+        case ActionType.ANALYZE:
+          return await executeAnalyze(step);
+        
+        case ActionType.ANSWER_QUESTION:
+          return await executeAnswerQuestion(step);
+        
+        default:
+          return {
+            type: step.type,
+            status: 'error',
+            error: `Unknown step type: ${step.type}`
+          };
+      }
+    } catch (error) {
+      logger.error(`Failed to execute step: ${step.type}`, { error });
+      return {
+        type: step.type,
+        status: 'error',
+        error: error.message
+      };
+    }
+  }
+  
+  /**
+   * Execute read file action
+   * 
+   * @param {Object} step Read file step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeReadFile(step) {
+    // Check if we have specific files to read
+    if (!step.files || step.files.length === 0) {
+      outputRenderer.addErrorMessage('No files specified for reading');
+      return { status: 'error', error: 'No files specified' };
+    }
+    
+    const results = [];
+    
+    // Read each file
+    for (const filePath of step.files) {
+      // Display action in UI
+      outputRenderer.addSystemMessage(`📄 Reading file: ${filePath}`);
+      
+      // Execute the action
+      const result = await fileOperations.readFile(filePath);
+      
+      // Display result in UI
+      if (result.status === 'success') {
+        outputRenderer.addCodeBlock(result.rawContent, getFileLanguage(filePath));
+        results.push(result);
+      } else {
+        outputRenderer.addErrorMessage(`Failed to read file: ${result.error}`);
+        return { status: 'error', error: result.error };
+      }
+    }
+    
+    return { status: 'success', results };
+  }
+  
+  /**
+   * Execute search files action
+   * 
+   * @param {Object} step Search files step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeSearchFiles(step) {
+    let pattern = '*';
+    let baseDir = '';
+    
+    // Extract pattern from description or use files
+    if (step.files && step.files.length > 0) {
+      pattern = step.files[0];
+    } else {
+      // Try to extract pattern from description
+      const patternMatch = /pattern[:\s]+([^\s]+)/i.exec(step.description);
+      if (patternMatch) {
+        pattern = patternMatch[1];
+      }
+    }
+    
+    // Display action in UI
+    outputRenderer.addSystemMessage(`🔍 Searching for files: ${pattern}${baseDir ? ` in ${baseDir}` : ''}`);
+    
+    // Execute the action
+    const result = await fileOperations.searchFiles(pattern, baseDir);
+    
+    // Display result in UI
+    if (result.status === 'success') {
+      if (result.matches.length > 0) {
+        outputRenderer.addSystemMessage(`Found ${result.matches.length} matching files:`);
+        outputRenderer.addCodeBlock(result.matches.join('\n'), 'bash');
+      } else {
+        outputRenderer.addSystemMessage('No matching files found.');
+      }
+    } else {
+      outputRenderer.addErrorMessage(`Failed to search files: ${result.error}`);
+      return { status: 'error', error: result.error };
+    }
+    
+    return { status: 'success', result };
+  }
+  
+  /**
+   * Execute update file action
+   * 
+   * @param {Object} step Update file step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeUpdateFile(step) {
+    // For update operations, we'll need to query the LLM
+    // to generate the actual changes based on step description
+    if (!step.files || step.files.length === 0) {
+      outputRenderer.addErrorMessage('No files specified for update');
+      return { status: 'error', error: 'No files specified' };
+    }
+    
+    // Go through each file to update
+    for (const filePath of step.files) {
+      // First, read the file
+      outputRenderer.addSystemMessage(`📄 Reading file for update: ${filePath}`);
+      const readResult = await fileOperations.readFile(filePath);
+      
+      if (readResult.status !== 'success') {
+        outputRenderer.addErrorMessage(`Failed to read file: ${readResult.error}`);
+        return { status: 'error', error: readResult.error };
+      }
+      
+      // Display current content
+      outputRenderer.addCodeBlock(readResult.rawContent, getFileLanguage(filePath));
+      
+      // Generate changes using the LLM
+      outputRenderer.addSystemMessage(`🧠 Generating updates for: ${filePath}`);
+      
+      const updatePrompt = `You are helping update code in the file: ${filePath}
+Current content:
+\`\`\`
+${readResult.rawContent}
+\`\`\`
+
+Update needed: ${step.description}
+
+Provide the complete updated file content, with appropriate changes to satisfy the requirement.
+Only return the updated code without explanations or markdown.
+`;
+      
+      const generatedUpdate = await llm.generateResponse(updatePrompt);
+      
+      // Extract the code (remove any markdown or explanation the LLM might add)
+      const newContent = extractCodeContent(generatedUpdate.text);
+      
+      // Display action in UI
+      outputRenderer.addSystemMessage(`✏️ Update file: ${filePath}`);
+      
+      // Execute the action
+      const updateResult = await fileOperations.updateFile(filePath, newContent);
+      
+      // Handle errors
+      if (updateResult.status === 'error') {
+        outputRenderer.addErrorMessage(`Failed to update file: ${updateResult.error}`);
+        return { status: 'error', error: updateResult.error };
+      }
+      
+      // Show a message about the changes
+      outputRenderer.addSystemMessage(`Changes: ${updateResult.additions} additions, ${updateResult.removals} removals`);
+      
+      // Auto-confirm if enabled
+      if (autoConfirm) {
+        const confirmResult = await fileOperations.confirmUpdate(updateResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Updated ${filePath} with ${updateResult.additions} additions and ${updateResult.removals} removals`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to update file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      }
+      
+      // Request confirmation from user
+      const confirmation = await confirmOperation(screen, updateResult);
+      
+      // Handle confirmation result
+      if (confirmation.choice === 'yes' || confirmation.choice === 'yes-to-all') {
+        // Set auto-confirm if yes-to-all
+        if (confirmation.choice === 'yes-to-all') {
+          autoConfirm = true;
+        }
+        
+        // Confirm the update
+        const confirmResult = await fileOperations.confirmUpdate(updateResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Updated ${filePath} with ${updateResult.additions} additions and ${updateResult.removals} removals`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to update file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      } else if (confirmation.choice === 'custom') {
+        // Apply custom content
+        const customResult = await fileOperations.updateFile(filePath, confirmation.customContent);
+        const confirmResult = await fileOperations.confirmUpdate(customResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Updated ${filePath} with custom changes`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to update file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      } else {
+        // Cancelled or rejected
+        outputRenderer.addSystemMessage(`❌ Update cancelled for ${filePath}`);
+        return { status: 'cancelled', filePath };
+      }
+    }
+    
+    return { status: 'error', error: 'No files were processed' };
+  }
+  
+  /**
+   * Execute create file action
+   * 
+   * @param {Object} step Create file step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeCreateFile(step) {
+    // For create operations, we'll need to query the LLM
+    // to generate the content based on step description
+    if (!step.files || step.files.length === 0) {
+      outputRenderer.addErrorMessage('No files specified for creation');
+      return { status: 'error', error: 'No files specified' };
+    }
+    
+    // Go through each file to create
+    for (const filePath of step.files) {
+      // Generate content using the LLM
+      outputRenderer.addSystemMessage(`🧠 Generating content for new file: ${filePath}`);
+      
+      const createPrompt = `You are helping create a new file: ${filePath}
+
+File purpose: ${step.description}
+
+Please generate appropriate content for this file. Consider the file extension and purpose.
+Only return the code without explanations or markdown.
+`;
+      
+      const generatedContent = await llm.generateResponse(createPrompt);
+      
+      // Extract the code (remove any markdown or explanation the LLM might add)
+      const content = extractCodeContent(generatedContent.text);
+      
+      // Display action in UI
+      outputRenderer.addSystemMessage(`🔨 Creating file: ${filePath}`);
+      outputRenderer.addCodeBlock(content, getFileLanguage(filePath));
+      
+      // Execute the action
+      const createResult = await fileOperations.createFile(filePath, content);
+      
+      // Handle errors
+      if (createResult.status === 'error') {
+        outputRenderer.addErrorMessage(`Failed to create file: ${createResult.error}`);
+        return { status: 'error', error: createResult.error };
+      }
+      
+      // Auto-confirm if enabled
+      if (autoConfirm) {
+        const confirmResult = await fileOperations.confirmCreate(createResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Created ${filePath}`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to create file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      }
+      
+      // Request confirmation from user
+      const confirmation = await confirmOperation(screen, createResult);
+      
+      // Handle confirmation result
+      if (confirmation.choice === 'yes' || confirmation.choice === 'yes-to-all') {
+        // Set auto-confirm if yes-to-all
+        if (confirmation.choice === 'yes-to-all') {
+          autoConfirm = true;
+        }
+        
+        // Confirm the creation
+        const confirmResult = await fileOperations.confirmCreate(createResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Created ${filePath}`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to create file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      } else if (confirmation.choice === 'custom') {
+        // Apply custom content
+        const customResult = await fileOperations.createFile(filePath, confirmation.customContent);
+        const confirmResult = await fileOperations.confirmCreate(customResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Created ${filePath} with custom content`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to create file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      } else {
+        // Cancelled or rejected
+        outputRenderer.addSystemMessage(`❌ Creation cancelled for ${filePath}`);
+        return { status: 'cancelled', filePath };
+      }
+    }
+    
+    return { status: 'error', error: 'No files were processed' };
+  }
+  
+  /**
+   * Execute delete file action
+   * 
+   * @param {Object} step Delete file step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeDeleteFile(step) {
+    if (!step.files || step.files.length === 0) {
+      outputRenderer.addErrorMessage('No files specified for deletion');
+      return { status: 'error', error: 'No files specified' };
+    }
+    
+    // Go through each file to delete
+    for (const filePath of step.files) {
+      // Display action in UI
+      outputRenderer.addSystemMessage(`🗑️ Delete file: ${filePath}`);
+      
+      // Execute the action
+      const deleteResult = await fileOperations.deleteFile(filePath);
+      
+      // Handle errors
+      if (deleteResult.status === 'error') {
+        outputRenderer.addErrorMessage(`Failed to delete file: ${deleteResult.error}`);
+        return { status: 'error', error: deleteResult.error };
+      }
+      
+      // Request confirmation from user (never auto-confirm deletion)
+      const confirmation = await confirmOperation(screen, deleteResult);
+      
+      // Handle confirmation result
+      if (confirmation.choice === 'yes') {
+        // Confirm the deletion
+        const confirmResult = await fileOperations.confirmDelete(deleteResult);
+        
+        if (confirmResult.status === 'success') {
+          outputRenderer.addSystemMessage(`✅ Deleted ${filePath}`);
+        } else {
+          outputRenderer.addErrorMessage(`Failed to delete file: ${confirmResult.error}`);
+          return { status: 'error', error: confirmResult.error };
+        }
+        
+        return { status: 'success', filePath, confirmResult };
+      } else {
+        // Cancelled or rejected
+        outputRenderer.addSystemMessage(`❌ Deletion cancelled for ${filePath}`);
+        return { status: 'cancelled', filePath };
+      }
+    }
+    
+    return { status: 'error', error: 'No files were processed' };
+  }
+  
+  /**
+   * Execute generate code action
+   * 
+   * @param {Object} step Generate code step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeGenerateCode(step) {
+    try {
+      // Display action in UI
+      outputRenderer.addSystemMessage(`💻 Generating code: ${step.description}`);
+      
+      // Generate code using the LLM
+      const prompt = `You are FrankCode, an AI programming assistant.
+Generate high-quality code based on the following requirements:
+
+${step.description}
+
+${step.files && step.files.length > 0 ? `The code should be for file: ${step.files[0]}` : ''}
+
+${step.reasoning ? `Additional context: ${step.reasoning}` : ''}
+
+Provide only the code without any explanations or markdown formatting.`;
+      
+      const response = await llm.generateResponse(prompt);
+      
+      // Display the generated code
+      const code = extractCodeContent(response.text);
+      outputRenderer.addCodeBlock(code, step.files && step.files.length > 0 ? getFileLanguage(step.files[0]) : 'javascript');
+      
+      // If we have a file specified, offer to save it
+      if (step.files && step.files.length > 0) {
+        outputRenderer.addSystemMessage(`Would you like to save this code to ${step.files[0]}?`);
+        outputRenderer.addSystemMessage(`Type /yes to save, or /no to just keep the code in the conversation.`);
+        
+        // The actual saving will be handled by the input handler
+        return { 
+          status: 'success', 
+          code,
+          pendingAction: {
+            type: 'save_code',
+            filePath: step.files[0],
+            content: code
+          }
+        };
+      }
+      
+      return { status: 'success', code };
+    } catch (error) {
+      logger.error(`Failed to generate code: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Failed to generate code: ${error.message}`);
+      return { status: 'error', error: error.message };
+    }
+  }
+  
+  /**
+   * Execute analyze action
+   * 
+   * @param {Object} step Analyze step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeAnalyze(step) {
+    try {
+      // Display action in UI
+      outputRenderer.addSystemMessage(`🔍 Analyzing: ${step.description}`);
+      
+      // Build context based on the files
+      let fileContents = '';
+      if (step.files && step.files.length > 0) {
+        for (const filePath of step.files) {
+          const readResult = await fileOperations.readFile(filePath);
+          if (readResult.status === 'success') {
+            fileContents += `File: ${filePath}\n\n${readResult.rawContent}\n\n`;
+          }
+        }
+      }
+      
+      // Generate analysis using the LLM
+      const prompt = `You are FrankCode, an AI programming assistant.
+Analyze the following code and provide insights based on this request:
+
+${step.description}
+
+${fileContents ? `Code to analyze:\n${fileContents}` : ''}
+
+${step.reasoning ? `Analysis focus: ${step.reasoning}` : ''}
+
+Provide a detailed analysis addressing the request.`;
+      
+      const response = await llm.generateResponse(prompt, {
+        temperature: 0.3 // Lower temperature for more analytical responses
+      });
+      
+      // Display the analysis
+      outputRenderer.addAssistantMessage(response.text);
+      
+      return { status: 'success', analysis: response.text };
+    } catch (error) {
+      logger.error(`Failed to analyze: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Failed to analyze: ${error.message}`);
+      return { status: 'error', error: error.message };
+    }
+  }
+  
+  /**
+   * Execute answer question action
+   * 
+   * @param {Object} step Answer question step
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeAnswerQuestion(step) {
+    try {
+      // Display action in UI
+      outputRenderer.addSystemMessage(`❓ Answering: ${step.description}`);
+      
+      // Build context based on the files
+      let fileContents = '';
+      if (step.files && step.files.length > 0) {
+        for (const filePath of step.files) {
+          const readResult = await fileOperations.readFile(filePath);
+          if (readResult.status === 'success') {
+            fileContents += `File: ${filePath}\n\n${readResult.rawContent}\n\n`;
+          }
+        }
+      }
+      
+      // Generate answer using the LLM
+      const prompt = `You are FrankCode, an AI programming assistant.
+Answer the following question:
+
+${step.description}
+
+${fileContents ? `Related code for context:\n${fileContents}` : ''}
+
+${step.reasoning ? `Additional context: ${step.reasoning}` : ''}
+
+Provide a clear and comprehensive answer.`;
+      
+      const response = await llm.generateResponse(prompt);
+      
+      // Display the answer
+      outputRenderer.addAssistantMessage(response.text);
+      
+      return { status: 'success', answer: response.text };
+    } catch (error) {
+      logger.error(`Failed to answer question: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Failed to answer question: ${error.message}`);
+      return { status: 'error', error: error.message };
+    }
+  }
+  
+  /**
+   * Suggest recovery options for a failed step
+   * 
+   * @param {Object} step Failed step
+   * @param {string} error Error message
+   * @returns {Promise<Object>} Recovery suggestions
+   */
+  async function suggestRecovery(step, error) {
+    try {
+      const prompt = `You are FrankCode, an AI programming assistant.
+A step in my task execution has failed. Please suggest how to recover:
+
+Failed step: ${step.type} - ${step.description}
+${step.files && step.files.length > 0 ? `Files involved: ${step.files.join(', ')}` : ''}
+Error message: ${error}
+
+Provide:
+1. A brief explanation of what might have gone wrong
+2. A specific suggestion on how to recover or work around this issue
+3. Indicate if this is a fatal error that should halt the entire task (true/false)`;
+      
+      const response = await llm.generateResponse(prompt, {
+        temperature: 0.3 // Lower temperature for more precise recovery suggestions
+      });
+      
+      // Try to extract whether it's fatal
+      const fatalMatch = /fatal:?\s*(true|false)/i.exec(response.text);
+      const isFatal = fatalMatch ? fatalMatch[1].toLowerCase() === 'true' : false;
+      
+      return {
+        suggestion: response.text,
+        fatal: isFatal
+      };
+    } catch (error) {
+      logger.error(`Failed to suggest recovery: ${error.message}`, { error });
+      return {
+        suggestion: "Failed to generate recovery suggestions. You may need to modify your task or approach.",
+        fatal: true
+      };
+    }
+  }
+  
+  /**
+   * Extract code content from LLM response, removing markdown and explanations
+   * 
+   * @param {string} text LLM response text
+   * @returns {string} Extracted code content
+   */
+  function extractCodeContent(text) {
+    // Check for code block
+    const codeBlockMatch = /\`\`\`(?:\w*\n)?([\s\S]*?)\`\`\`/g.exec(text);
+    if (codeBlockMatch) {
+      return codeBlockMatch[1].trim();
+    }
+    
+    // No code block, strip any explanations (look for patterns like explanations followed by actual code)
+    const lines = text.split('\n');
+    
+    // Look for patterns indicating explanations
+    const codeStartIndex = lines.findIndex((line, index) => {
+      // Common patterns that indicate the start of code after explanations
+      const codeStartPatterns = [
+        /^(class|function|import|const|let|var|#|\/\/|\*|\/\*|<!)/,
+        /^[a-zA-Z0-9_]+\s*\(\s*\)\s*{/,
+        /^export /,
+        /^public /,
+        /^private /,
+        /^module\./
+      ];
+      
+      return index > 0 && codeStartPatterns.some(pattern => pattern.test(line));
+    });
+    
+    if (codeStartIndex > 0) {
+      return lines.slice(codeStartIndex).join('\n').trim();
+    }
+    
+    // If no obvious code start found, return the original text
+    return text.trim();
+  }
+  
+  /**
+   * Get the language for syntax highlighting based on file extension
+   * 
+   * @param {string} filePath File path
+   * @returns {string} Language for syntax highlighting
+   */
+  function getFileLanguage(filePath) {
+    const extension = filePath.split('.').pop().toLowerCase();
+    
+    const languageMap = {
+      'js': 'javascript',
+      'jsx': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'py': 'python',
+      'rb': 'ruby',
+      'go': 'go',
+      'java': 'java',
+      'c': 'c',
+      'cpp': 'cpp',
+      'h': 'c',
+      'hpp': 'cpp',
+      'cs': 'csharp',
+      'php': 'php',
+      'html': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'sass': 'scss',
+      'json': 'json',
+      'md': 'markdown',
+      'xml': 'xml',
+      'sh': 'bash',
+      'bash': 'bash',
+      'yml': 'yaml',
+      'yaml': 'yaml',
+      'sql': 'sql',
+      'rs': 'rust',
+      'swift': 'swift'
+    };
+    
+    return languageMap[extension] || 'text';
+  }
+  
+  /**
+   * Execute a direct agent action
+   * 
+   * @param {Object} action Action to execute
+   * @returns {Promise<Object>} Action result
+   */
+  async function executeAction(action) {
+    try {
+      // Create a step from the action
+      const step = {
+        type: action.type,
+        description: action.description || '',
+        files: action.files || [],
+        reasoning: action.reasoning || ''
+      };
+      
+      // Execute the step
+      return await executeStep(step);
+    } catch (error) {
+      logger.error(`Failed to execute action: ${action.type}`, { error });
+      return {
+        type: action.type,
+        status: 'error',
+        error: error.message
+      };
+    }
+  }
+  
+  // Return the agent runner interface
+  return {
+    executeTask,
+    executeAction,
+    ActionType
+  };
+}
+
+module.exports = {
+  createAgentRunner
+};
+```
+
+# src/agent/taskPlanner.js
+
+```js
+/**
+ * Task Planning Module for FrankCode
+ * 
+ * This module is responsible for breaking down complex tasks into
+ * manageable steps and creating an execution plan.
+ */
+
+const { logger } = require('../utils/logger');
+const { countTokens } = require('./tokenizer');
+
+/**
+ * Create a task planner
+ * 
+ * @param {Object} options Configuration options
+ * @param {Object} options.llm LLM client for generating plans
+ * @param {Object} options.agent Agent instance
+ * @returns {Object} The task planner interface
+ */
+function createTaskPlanner({ llm, agent }) {
+  /**
+   * Break down a complex task into steps
+   * 
+   * @param {string} task The high-level task description
+   * @param {Object} context Current project context
+   * @returns {Promise<Array<Object>>} Planned steps
+   */
+  async function planTask(task, context) {
+    try {
+      logger.info(`Planning task: ${task}`);
+      
+      // Generate the planning prompt
+      const prompt = generatePlanningPrompt(task, context);
+      
+      // Use the LLM to generate a plan
+      const response = await llm.generateResponse(prompt, {
+        temperature: 0.3, // Lower temperature for more consistent planning
+        maxTokens: 1024   // Allow for detailed plans
+      });
+      
+      // Parse the plan from the response
+      const steps = parsePlanSteps(response.text);
+      
+      logger.info(`Task plan created with ${steps.length} steps`);
+      return steps;
+    } catch (error) {
+      logger.error(`Failed to plan task: ${error.message}`, { error });
+      return [{ 
+        type: 'error', 
+        description: `Failed to create plan: ${error.message}`,
+        action: 'notify'
+      }];
+    }
+  }
+  
+  /**
+   * Generate a prompt for task planning
+   * 
+   * @param {string} task The task description
+   * @param {Object} context Current project context
+   * @returns {string} The planning prompt
+   */
+  function generatePlanningPrompt(task, context) {
+    // Include only the most relevant files to keep context manageable
+    const relevantFiles = getRelevantFilesForTask(task, context);
+    
+    return `You are FrankCode, an AI coding assistant that helps with complex programming tasks.
+I need you to break down the following task into a clear step-by-step plan:
+
+TASK: ${task}
+
+Current project context:
+${relevantFiles.map(file => `- ${file.filePath}: ${file.summary}`).join('\n')}
+
+Your task is to break this down into smaller steps. For each step:
+1. Specify the type of action required (read_file, search_files, update_file, create_file, generate_code, analyze)
+2. Provide a clear description of what needs to be done
+3. List any specific files that need to be examined or modified
+4. Explain the reasoning for this step
+
+FORMAT YOUR RESPONSE AS:
+STEP 1:
+Type: [action_type]
+Description: [clear description]
+Files: [file paths, if relevant]
+Reasoning: [brief explanation]
+
+STEP 2:
+...
+
+Ensure your plan is comprehensive yet concise. Identify 3-7 key steps to make the task manageable.`;
+  }
+  
+  /**
+   * Parse the steps from the LLM response
+   * 
+   * @param {string} response The LLM response text
+   * @returns {Array<Object>} Parsed steps
+   */
+  function parsePlanSteps(response) {
+    const steps = [];
+    const stepRegex = /STEP\s+(\d+):\s*\n([\s\S]*?)(?=STEP\s+\d+:|$)/g;
+    
+    let match;
+    while ((match = stepRegex.exec(response)) !== null) {
+      const stepContent = match[2].trim();
+      
+      // Parse step details
+      const typeMatch = /Type:\s*(\w+)/.exec(stepContent);
+      const descMatch = /Description:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      const filesMatch = /Files:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      const reasoningMatch = /Reasoning:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      
+      if (typeMatch && descMatch) {
+        steps.push({
+          type: typeMatch[1].toLowerCase(),
+          description: descMatch[1].trim(),
+          files: filesMatch ? 
+            filesMatch[1].trim().split(/,\s*/).filter(f => f !== 'N/A' && f !== '') : 
+            [],
+          reasoning: reasoningMatch ? reasoningMatch[1].trim() : ''
+        });
+      }
+    }
+    
+    // If no steps were parsed but we have content, create a fallback step
+    if (steps.length === 0 && response.trim().length > 0) {
+      steps.push({
+        type: 'analyze',
+        description: 'Analyze the task and provide guidance',
+        files: [],
+        reasoning: 'No structured plan could be created, falling back to general analysis'
+      });
+    }
+    
+    return steps;
+  }
+  
+  /**
+   * Get relevant files for a task based on content and keywords
+   * 
+   * @param {string} task The task description
+   * @param {Object} context Current project context
+   * @returns {Array<Object>} Relevant files
+   */
+  function getRelevantFilesForTask(task, context) {
+    // Simple relevance scoring based on keywords in the task
+    const taskWords = task.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+    const relevanceScores = new Map();
+    
+    // Score each file based on matching keywords
+    for (const file of context.fileContexts) {
+      let score = 0;
+      
+      // File name relevance (weighted higher)
+      const fileName = file.filePath.toLowerCase();
+      taskWords.forEach(word => {
+        if (fileName.includes(word)) {
+          score += 5;
+        }
+      });
+      
+      // Content relevance
+      const content = file.content.toLowerCase();
+      taskWords.forEach(word => {
+        const regex = new RegExp(word, 'g');
+        const matches = content.match(regex);
+        if (matches) {
+          score += matches.length;
+        }
+      });
+      
+      relevanceScores.set(file, score);
+    }
+    
+    // Sort files by relevance score and take top 5
+    return Array.from(context.fileContexts)
+      .sort((a, b) => relevanceScores.get(b) - relevanceScores.get(a))
+      .slice(0, 5);
+  }
+  
+  /**
+   * Estimate the difficulty and time required for a task
+   * 
+   * @param {string} task The task description
+   * @param {Array<Object>} steps The planned steps
+   * @returns {Object} Difficulty assessment
+   */
+  function assessTaskDifficulty(task, steps) {
+    // Count total files to be modified
+    const uniqueFiles = new Set();
+    steps.forEach(step => {
+      step.files.forEach(file => uniqueFiles.add(file));
+    });
+    
+    // Assess based on number of steps and files
+    const filesToModify = uniqueFiles.size;
+    const stepCount = steps.length;
+    
+    // Count complexity factors in the task description
+    const complexityFactors = [
+      /refactor/i, 
+      /optimize/i, 
+      /architecture/i, 
+      /redesign/i, 
+      /performance/i, 
+      /security/i
+    ];
+    
+    const complexityScore = complexityFactors.reduce((score, regex) => 
+      regex.test(task) ? score + 1 : score, 0);
+    
+    let difficulty;
+    if (stepCount <= 2 && filesToModify <= 1 && complexityScore === 0) {
+      difficulty = 'easy';
+    } else if (stepCount <= 5 && filesToModify <= 3 && complexityScore <= 1) {
+      difficulty = 'medium';
+    } else {
+      difficulty = 'complex';
+    }
+    
+    // Estimate time (very rough estimate)
+    let estimatedMinutes;
+    switch (difficulty) {
+      case 'easy':
+        estimatedMinutes = 1;
+        break;
+      case 'medium':
+        estimatedMinutes = 3;
+        break;
+      case 'complex':
+        estimatedMinutes = 5 + (stepCount - 5) * 2;
+        break;
+    }
+    
+    return {
+      difficulty,
+      estimatedMinutes,
+      stepCount,
+      filesToModify
+    };
+  }
+  
+  // Return the task planner interface
+  return {
+    planTask,
+    assessTaskDifficulty
+  };
+}
+
+module.exports = {
+  createTaskPlanner
+};
+```
+
 # src/agent/tokenizer.js
 
 ```js
@@ -1421,6 +3120,407 @@ module.exports = {
   countTokens,
   truncateToTokens,
   initTokenizer
+};
+```
+
+# src/agent/tools/fileOperations.js
+
+```js
+/**
+ * File Operation Tools for FrankCode Agent
+ * 
+ * This module provides tools for the agent to perform file operations
+ * such as reading, writing, searching, and updating files.
+ */
+
+const fs = require('fs').promises;
+const path = require('path');
+const chalk = require('chalk');
+const { promisify } = require('util');
+const glob = promisify(require('glob'));
+const { logger } = require('../../utils/logger');
+const diff = require('diff');
+
+/**
+ * Read a file and display the content with line numbers
+ * 
+ * @param {string} filePath Path to the file
+ * @param {number} offset Line number to start reading from (0-indexed)
+ * @param {number} limit Maximum number of lines to read
+ * @returns {Promise<Object>} File content with metadata
+ */
+async function readFile(filePath, offset = 0, limit = -1) {
+  try {
+    // Log the operation
+    logger.info(`Reading file: ${filePath}`, { offset, limit });
+    
+    // Make sure the file exists
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    // Read the file content
+    const content = await fs.readFile(filePath, 'utf8');
+    const lines = content.split('\n');
+    
+    // Apply offset and limit
+    const startLine = Math.max(0, offset);
+    const endLine = limit > 0 ? Math.min(lines.length, startLine + limit) : lines.length;
+    const selectedLines = lines.slice(startLine, endLine);
+    
+    // Format the display content with line numbers
+    const displayContent = selectedLines.map((line, index) => {
+      const lineNumber = startLine + index + 1;
+      return `${lineNumber.toString().padStart(6)} ${line}`;
+    }).join('\n');
+    
+    // Return the result
+    return {
+      operation: 'read',
+      filePath,
+      content: displayContent,
+      rawContent: selectedLines.join('\n'),
+      startLine,
+      endLine: endLine - 1,
+      totalLines: lines.length,
+      status: 'success'
+    };
+  } catch (error) {
+    logger.error(`Failed to read file: ${filePath}`, { error });
+    return {
+      operation: 'read',
+      filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Search for files matching a pattern
+ * 
+ * @param {string} pattern Glob pattern to match files
+ * @param {string} baseDir Base directory for the search
+ * @returns {Promise<Object>} Search results
+ */
+async function searchFiles(pattern, baseDir = process.cwd()) {
+  try {
+    // Log the operation
+    logger.info(`Searching for files: ${pattern} in ${baseDir}`);
+    
+    // Normalize the pattern
+    const normalizedPattern = path.isAbsolute(pattern) 
+      ? pattern 
+      : path.join(baseDir, pattern);
+    
+    // Find matching files
+    const matches = await glob(normalizedPattern, { nodir: true });
+    
+    // Return the result
+    return {
+      operation: 'search',
+      pattern,
+      baseDir,
+      matches,
+      matchCount: matches.length,
+      status: 'success'
+    };
+  } catch (error) {
+    logger.error(`Failed to search for files: ${pattern}`, { error });
+    return {
+      operation: 'search',
+      pattern,
+      baseDir,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Update a file with new content
+ * 
+ * @param {string} filePath Path to the file
+ * @param {string} newContent New file content
+ * @param {boolean} showDiff Whether to show the diff
+ * @returns {Promise<Object>} Update result with diff
+ */
+async function updateFile(filePath, newContent, showDiff = true) {
+  try {
+    // Log the operation
+    logger.info(`Updating file: ${filePath}`);
+    
+    // Make sure the file exists
+    let originalContent = '';
+    try {
+      originalContent = await fs.readFile(filePath, 'utf8');
+    } catch (error) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    // Generate diff
+    const changes = diff.diffLines(originalContent, newContent);
+    
+    // Count additions and removals
+    let additions = 0;
+    let removals = 0;
+    
+    changes.forEach(change => {
+      if (change.added) {
+        additions += change.count;
+      } else if (change.removed) {
+        removals += change.count;
+      }
+    });
+    
+    // Generate diff display
+    let diffDisplay = '';
+    if (showDiff) {
+      const originalLines = originalContent.split('\n');
+      let lineNumber = 1;
+      
+      changes.forEach(change => {
+        if (change.added) {
+          // Green for additions
+          change.value.split('\n').forEach(line => {
+            if (line === '') return;
+            diffDisplay += chalk.green(`+ ${lineNumber} ${line}\n`);
+          });
+        } else if (change.removed) {
+          // Red for removals
+          change.value.split('\n').forEach(line => {
+            if (line === '') return;
+            diffDisplay += chalk.red(`- ${lineNumber++} ${line}\n`);
+          });
+        } else {
+          // Grey for context
+          change.value.split('\n').forEach(line => {
+            if (line === '') return;
+            diffDisplay += chalk.grey(`  ${lineNumber++} ${line}\n`);
+          });
+        }
+      });
+    }
+    
+    // Return the result
+    return {
+      operation: 'update',
+      filePath,
+      diffDisplay,
+      changes,
+      additions,
+      removals,
+      originalContent,
+      newContent,
+      status: 'pending' // Requires confirmation
+    };
+  } catch (error) {
+    logger.error(`Failed to update file: ${filePath}`, { error });
+    return {
+      operation: 'update',
+      filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Confirm and apply file update
+ * 
+ * @param {Object} updateResult Result from updateFile
+ * @returns {Promise<Object>} Final update result
+ */
+async function confirmUpdate(updateResult) {
+  try {
+    // Check if the update is valid
+    if (updateResult.status === 'error') {
+      throw new Error(`Cannot confirm an update with errors: ${updateResult.error}`);
+    }
+    
+    // Apply the update
+    await fs.writeFile(updateResult.filePath, updateResult.newContent);
+    
+    // Return the result
+    return {
+      operation: 'update',
+      filePath: updateResult.filePath,
+      additions: updateResult.additions,
+      removals: updateResult.removals,
+      status: 'success'
+    };
+  } catch (error) {
+    logger.error(`Failed to confirm update: ${updateResult.filePath}`, { error });
+    return {
+      operation: 'update',
+      filePath: updateResult.filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Create a new file
+ * 
+ * @param {string} filePath Path to the new file
+ * @param {string} content File content
+ * @returns {Promise<Object>} Creation result
+ */
+async function createFile(filePath, content) {
+  try {
+    // Log the operation
+    logger.info(`Creating file: ${filePath}`);
+    
+    // Check if the file already exists
+    try {
+      await fs.access(filePath);
+      throw new Error(`File already exists: ${filePath}`);
+    } catch (error) {
+      // File doesn't exist, which is what we want
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+    
+    // Ensure the directory exists
+    const dirPath = path.dirname(filePath);
+    await fs.mkdir(dirPath, { recursive: true });
+    
+    // Return the result without actually creating the file (requires confirmation)
+    return {
+      operation: 'create',
+      filePath,
+      content,
+      status: 'pending' // Requires confirmation
+    };
+  } catch (error) {
+    logger.error(`Failed to create file: ${filePath}`, { error });
+    return {
+      operation: 'create',
+      filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Confirm and apply file creation
+ * 
+ * @param {Object} createResult Result from createFile
+ * @returns {Promise<Object>} Final creation result
+ */
+async function confirmCreate(createResult) {
+  try {
+    // Check if the creation is valid
+    if (createResult.status === 'error') {
+      throw new Error(`Cannot confirm a creation with errors: ${createResult.error}`);
+    }
+    
+    // Apply the creation
+    await fs.writeFile(createResult.filePath, createResult.content);
+    
+    // Return the result
+    return {
+      operation: 'create',
+      filePath: createResult.filePath,
+      status: 'success'
+    };
+  } catch (error) {
+    logger.error(`Failed to confirm creation: ${createResult.filePath}`, { error });
+    return {
+      operation: 'create',
+      filePath: createResult.filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Delete a file
+ * 
+ * @param {string} filePath Path to the file
+ * @returns {Promise<Object>} Deletion result
+ */
+async function deleteFile(filePath) {
+  try {
+    // Log the operation
+    logger.info(`Deleting file: ${filePath}`);
+    
+    // Make sure the file exists
+    try {
+      await fs.access(filePath);
+    } catch (error) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    // Read the file content before deleting (for confirmation)
+    const content = await fs.readFile(filePath, 'utf8');
+    
+    // Return the result without actually deleting the file (requires confirmation)
+    return {
+      operation: 'delete',
+      filePath,
+      content,
+      status: 'pending' // Requires confirmation
+    };
+  } catch (error) {
+    logger.error(`Failed to delete file: ${filePath}`, { error });
+    return {
+      operation: 'delete',
+      filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+/**
+ * Confirm and apply file deletion
+ * 
+ * @param {Object} deleteResult Result from deleteFile
+ * @returns {Promise<Object>} Final deletion result
+ */
+async function confirmDelete(deleteResult) {
+  try {
+    // Check if the deletion is valid
+    if (deleteResult.status === 'error') {
+      throw new Error(`Cannot confirm a deletion with errors: ${deleteResult.error}`);
+    }
+    
+    // Apply the deletion
+    await fs.unlink(deleteResult.filePath);
+    
+    // Return the result
+    return {
+      operation: 'delete',
+      filePath: deleteResult.filePath,
+      status: 'success'
+    };
+  } catch (error) {
+    logger.error(`Failed to confirm deletion: ${deleteResult.filePath}`, { error });
+    return {
+      operation: 'delete',
+      filePath: deleteResult.filePath,
+      error: error.message,
+      status: 'error'
+    };
+  }
+}
+
+module.exports = {
+  readFile,
+  searchFiles,
+  updateFile,
+  confirmUpdate,
+  createFile,
+  confirmCreate,
+  deleteFile,
+  confirmDelete
 };
 ```
 
@@ -1966,11 +4066,396 @@ module.exports = {
 const { createClient } = require('./client');
 const { createQueue } = require('./queue');
 const { createWebSocketClient } = require('./websocket');
+const { createOllamaClient } = require('./ollama-api-integration');
 
 module.exports = {
   createClient,
   createQueue,
-  createWebSocketClient
+  createWebSocketClient,
+  createOllamaClient
+};
+```
+
+# src/api/ollama-api-integration.js
+
+```js
+/**
+ * Ollama API Integration for FrankCode
+ * 
+ * This module provides an API client for connecting to Ollama LLM service.
+ * It's designed to be a drop-in replacement for the distributed LLM client.
+ */
+
+const fetch = require('node-fetch');
+const { logger } = require('../utils/logger');
+
+/**
+ * Create an Ollama API client
+ * 
+ * @param {Object} options Configuration options
+ * @param {string} options.host Host for the Ollama service
+ * @param {number} options.port Port for the Ollama service
+ * @param {string} options.model Model to use
+ * @param {number} options.temperature Temperature setting (0-1)
+ * @returns {Object} The Ollama API client interface
+ */
+function createOllamaClient(options) {
+  const {
+    host = 'localhost',
+    port = 11434,
+    model = 'llama2',
+    temperature = 0.7
+  } = options;
+  
+  const baseUrl = `http://${host}:${port}`;
+  let isConnected = false;
+  
+  /**
+   * Initialize the client and test connection
+   * 
+   * @returns {Promise<boolean>} Connection success
+   */
+  async function initialize() {
+    try {
+      logger.debug('Testing Ollama connection...');
+      
+      // Check if Ollama is running
+      const response = await fetch(`${baseUrl}/api/tags`);
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const models = data.models || [];
+      
+      // Log available models
+      logger.info(`Connected to Ollama. Available models: ${models.map(m => m.name).join(', ') || 'none'}`);
+      
+      // Check if our model is available
+      const modelAvailable = models.some(m => m.name === model);
+      if (!modelAvailable && models.length > 0) {
+        // Automatically use the first available model
+        model = models[0].name;
+        logger.info(`Model switched to available model: ${model}`);
+      } else if (!modelAvailable) {
+        logger.warn(`Model '${model}' not found in Ollama. Available models: ${models.map(m => m.name).join(', ')}`);
+      }
+      
+      await testOllamaEndpoint();
+      
+      isConnected = true;
+      return true;
+    } catch (error) {
+      logger.error(`Failed to connect to Ollama at ${baseUrl}: ${error.message}`);
+      isConnected = false;
+      return false;
+    }
+  }
+  // Add this function near the top of the ollama-api-integration.js file, just inside the createOllamaClient function
+async function testOllamaEndpoint() {
+    try {
+      console.log(`Testing Ollama API at ${baseUrl}...`);
+      
+      // Test /api/tags endpoint
+      console.log("Testing /api/tags endpoint...");
+      const tagsResponse = await fetch(`${baseUrl}/api/tags`);
+      console.log(`/api/tags status: ${tagsResponse.status}`);
+      
+      if (tagsResponse.ok) {
+        const tagsData = await tagsResponse.json();
+        console.log(`Available models: ${JSON.stringify(tagsData)}`);
+      }
+      
+      // Test minimal generate request
+      console.log("Testing /api/generate endpoint with minimal request...");
+      const minimalRequest = { model, prompt: "Hello" };
+      console.log(`Request body: ${JSON.stringify(minimalRequest)}`);
+      
+      const genResponse = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(minimalRequest)
+      });
+      
+      console.log(`/api/generate status: ${genResponse.status}`);
+      console.log(`/api/generate status text: ${genResponse.statusText}`);
+      
+      // Log full request and response details
+      console.log(`Full request URL: ${baseUrl}/api/generate`);
+      console.log(`Host: ${host}, Port: ${port}`);
+      
+      // Try different endpoint variations
+      console.log("Testing alternative endpoints...");
+      const endpoints = [
+        "/api/generate",
+        "/api/completion",
+        "/api/completions",
+        "/api/chat/completions"
+      ];
+      
+      for (const endpoint of endpoints) {
+        try {
+          const testResp = await fetch(`${baseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(minimalRequest)
+          });
+          console.log(`${endpoint} status: ${testResp.status}`);
+        } catch (err) {
+          console.log(`${endpoint} error: ${err.message}`);
+        }
+      }
+    } catch (error) {
+      console.error(`Test failed: ${error.message}`);
+    }
+  }
+  
+  // Then add this line at the end of the initialize function:
+  
+  /**
+   * Generate a response from Ollama
+   * 
+   * @param {string} prompt The prompt to send
+   * @param {Object} options Additional options
+   * @returns {Promise<Object>} The response
+   */
+  async function generateResponse(prompt, options = {}) {
+    try {
+      logger.debug(`Sending request to Ollama (${model})`);
+      
+      // Use a minimal request body matching the successful curl command
+      const requestBody = {
+        model: model,
+        prompt: prompt
+      };
+      
+      const response = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      // Read response as text first
+      const responseText = await response.text();
+      
+      // Handle different response formats
+      try {
+        // Try parsing as single JSON object
+        const data = JSON.parse(responseText);
+        return {
+          text: data.response || "No response text",
+          tokens: data.eval_count || 0,
+          model: data.model || model
+        };
+      } catch (parseError) {
+        // If not single JSON, try parsing as multiple JSON lines
+        try {
+          const lines = responseText.split('\n').filter(line => line.trim());
+          // Get the last complete JSON object
+          const lastLine = lines[lines.length - 1];
+          const lastData = JSON.parse(lastLine);
+          
+          // Combine all responses
+          const fullText = lines.map(line => {
+            try {
+              const obj = JSON.parse(line);
+              return obj.response || '';
+            } catch (e) {
+              return '';
+            }
+          }).join('');
+          
+          return {
+            text: fullText,
+            tokens: lastData.eval_count || lines.length,
+            model: model
+          };
+        } catch (e) {
+          // If all parsing fails, return raw text
+          return {
+            text: responseText,
+            tokens: responseText.length / 4, // rough estimate
+            model: model
+          };
+        }
+      }
+    } catch (error) {
+      logger.error(`Error generating response from Ollama: ${error.message}`);
+      return {
+        text: `Error: Failed to generate response from Ollama. ${error.message}`,
+        tokens: 0,
+        error: true
+      };
+    }
+  }
+  
+  /**
+   * Stream a response from Ollama
+   * 
+   * @param {string} prompt The prompt to send
+   * @param {Function} onToken Callback for each token
+   * @param {Function} onComplete Callback when complete
+   * @param {Object} options Additional options
+   */
+  async function streamResponse(prompt, onToken, onComplete, options = {}) {
+    try {
+      const requestOptions = {
+        temperature: options.temperature || temperature,
+        max_tokens: options.maxTokens || 2048,
+        stop: options.stop || ['\n\nUSER:', '\n\nASSISTANT:']
+      };
+      
+      logger.debug(`Streaming request to Ollama (${model})`);
+      
+      const response = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          temperature: requestOptions.temperature,
+          max_tokens: requestOptions.max_tokens,
+          stop: requestOptions.stop,
+          stream: true
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let totalTokens = 0;
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+        
+        // Decode the chunk and add to buffer
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete JSON objects from the buffer
+        let newlineIndex;
+        while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+          const line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          
+          if (line.trim() === '') continue;
+          
+          try {
+            const data = JSON.parse(line);
+            
+            if (data.response) {
+              onToken(data.response);
+              totalTokens++;
+            }
+            
+            // Check if done
+            if (data.done) {
+              onComplete({
+                model: data.model || model,
+                tokens: totalTokens
+              });
+              return;
+            }
+          } catch (error) {
+            logger.error(`Error parsing Ollama stream: ${error.message}`);
+          }
+        }
+      }
+      
+      // Final completion if we haven't already called it
+      onComplete({
+        model,
+        tokens: totalTokens
+      });
+    } catch (error) {
+      logger.error(`Error streaming response from Ollama: ${error.message}`);
+      onToken(`Error: Failed to stream response from Ollama. ${error.message}`);
+      onComplete({ tokens: 0, error: true });
+    }
+  }
+  
+  /**
+   * Get model information
+   * 
+   * @returns {Promise<Object>} Model information
+   */
+  async function getModelInfo() {
+    try {
+      const response = await fetch(`${baseUrl}/api/show`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: model
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      return {
+        name: data.model || model,
+        parameters: data.parameters || {},
+        size: data.size || 'unknown',
+        family: data.modelfile?.parameter || 'unknown'
+      };
+    } catch (error) {
+      logger.error(`Error getting model info: ${error.message}`);
+      return {
+        name: model,
+        parameters: {},
+        size: 'unknown',
+        family: 'unknown'
+      };
+    }
+  }
+  
+  /**
+   * Get connection status
+   * 
+   * @returns {boolean} Connection status
+   */
+  function getConnectionStatus() {
+    return isConnected;
+  }
+  
+  // Initialize on creation
+  initialize().catch(error => {
+    logger.error(`Failed to initialize Ollama client: ${error.message}`);
+  });
+  
+  // Return the client interface
+  return {
+    generateResponse,
+    streamResponse,
+    getModelInfo,
+    getConnectionStatus,
+    reconnect: initialize
+  };
+}
+
+module.exports = {
+  createOllamaClient
 };
 ```
 
@@ -2411,6 +4896,7 @@ async function startApp(config) {
     let apiClient;
     
     // Check if offline mode is enabled
+    // Check if offline mode is enabled
     if (config.offline) {
       logger.info('Running in offline mode - no LLM connection will be attempted');
       
@@ -2429,19 +4915,35 @@ async function startApp(config) {
       };
     } else {
       // Normal mode - try to connect to LLM service
-      logger.info('Connecting to LLM service...');
+      // Check if we should use Ollama
+      const useOllama = config.llm.api === 'ollama';
       
-      // Add a try-catch to handle connection errors gracefully
+      logger.info(`Connecting to ${useOllama ? 'Ollama' : 'distributed LLM'} service...`);
+      
       try {
-        apiClient = createClient({
-          host: config.llm.coordinatorHost,
-          port: config.llm.coordinatorPort,
-          model: config.llm.model,
-          temperature: config.llm.temperature,
-          api: config.llm.api
-        });
-        
-        logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        if (useOllama) {
+          // Import the Ollama client
+          const { createOllamaClient } = require('./api');
+          
+          apiClient = createOllamaClient({
+            host: '127.0.0.1',
+            port: config.llm.coordinatorPort,
+            model: 'deepseek-r1:1.5b',  // Use the model you have installed
+            temperature: config.llm.temperature
+          });
+          
+          logger.info(`Attempting to connect to Ollama at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        } else {
+          apiClient = createClient({
+            host: config.llm.coordinatorHost,
+            port: config.llm.coordinatorPort,
+            model: config.llm.model,
+            temperature: config.llm.temperature,
+            api: config.llm.api
+          });
+          
+          logger.info(`Attempting to connect to ${config.llm.api} at ${config.llm.coordinatorHost}:${config.llm.coordinatorPort}`);
+        }
       } catch (error) {
         logger.error('Failed to create API client', { error });
         
@@ -2518,6 +5020,290 @@ module.exports = {
 };
 ```
 
+# src/server/server-setup.js
+
+```js
+/**
+ * FrankCode Server Setup
+ * 
+ * This script sets up an API server for FrankCode and creates a public URL using ngrok.
+ * It allows remote access to the LLM service and provides a proxy for Ollama.
+ */
+
+const express = require('express');
+const cors = require('cors');
+const ngrok = require('ngrok');
+const fetch = require('node-fetch');
+const fs = require('fs').promises;
+const path = require('path');
+const dotenv = require('dotenv');
+const { logger } = require('../utils/logger');
+
+// Load environment variables from parent directories
+function loadEnvFromParentDirs() {
+  let currentDir = process.cwd();
+  let rootDir = path.parse(currentDir).root;
+  
+  // Try to find .env in current and parent directories
+  while (currentDir !== rootDir) {
+    const envPath = path.join(currentDir, '.env');
+    try {
+      if (fs.existsSync(envPath)) {
+        logger.info(`Found .env file at ${envPath}`);
+        dotenv.config({ path: envPath });
+        return true;
+      }
+    } catch (error) {
+      // Ignore errors and continue searching
+    }
+    
+    // Move up one directory
+    currentDir = path.dirname(currentDir);
+  }
+  
+  // Try root directory as a last resort
+  const rootEnvPath = path.join(rootDir, '.env');
+  try {
+    if (fs.existsSync(rootEnvPath)) {
+      logger.info(`Found .env file at ${rootEnvPath}`);
+      dotenv.config({ path: rootEnvPath });
+      return true;
+    }
+  } catch (error) {
+    // Ignore errors
+  }
+  
+  logger.warn('No .env file found in any parent directory');
+  return false;
+}
+
+// Load environment variables
+loadEnvFromParentDirs();
+
+// Ollama API configuration
+const ollamaHost = process.env.OLLAMA_HOST || 'localhost';
+const ollamaPort = process.env.OLLAMA_PORT || 11434;
+const ollamaUrl = `http://${ollamaHost}:${ollamaPort}`;
+
+/**
+ * Start the FrankCode server
+ * 
+ * @param {Object} options Configuration options
+ * @param {number} options.port Port for the server
+ * @param {boolean} options.enableNgrok Whether to enable ngrok
+ * @returns {Promise<Object>} Server info
+ */
+async function startServer(options = {}) {
+  const {
+    port = 3000,
+    enableNgrok = true
+  } = options;
+  
+  // Create Express app
+  const app = express();
+  
+  // Configure middleware
+  app.use(cors());
+  app.use(express.json());
+  
+  // Health check endpoint
+  app.get('/health', (req, res) => {
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString()
+    });
+  });
+  
+  // Ollama proxy endpoint
+  app.post('/api/generate', async (req, res) => {
+    try {
+      const response = await fetch(`${ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(req.body)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      logger.error(`Error proxying to Ollama: ${error.message}`);
+      res.status(500).json({
+        error: 'Failed to proxy request to Ollama',
+        message: error.message
+      });
+    }
+  });
+  
+  // Ollama streaming endpoint
+  app.post('/api/generate/stream', async (req, res) => {
+    try {
+      // Set up streaming response
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      
+      // Forward request to Ollama
+      const ollamaReq = await fetch(`${ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...req.body,
+          stream: true
+        })
+      });
+      
+      if (!ollamaReq.ok) {
+        throw new Error(`Ollama API returned status ${ollamaReq.status}`);
+      }
+      
+      // Stream response from Ollama to client
+      const reader = ollamaReq.body.getReader();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          break;
+        }
+        
+        // Forward chunk to client
+        res.write(value);
+        res.flush();
+      }
+      
+      res.end();
+    } catch (error) {
+      logger.error(`Error streaming from Ollama: ${error.message}`);
+      res.status(500).json({
+        error: 'Failed to stream from Ollama',
+        message: error.message
+      });
+    }
+  });
+  
+  // Ollama model list endpoint
+  app.get('/api/models', async (req, res) => {
+    try {
+      const response = await fetch(`${ollamaUrl}/api/tags`);
+      
+      if (!response.ok) {
+        throw new Error(`Ollama API returned status ${response.status}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error) {
+      logger.error(`Error getting models from Ollama: ${error.message}`);
+      res.status(500).json({
+        error: 'Failed to get models from Ollama',
+        message: error.message
+      });
+    }
+  });
+  
+  // Start the server
+  return new Promise((resolve, reject) => {
+    try {
+      const server = app.listen(port, async () => {
+        logger.info(`FrankCode server running on http://localhost:${port}`);
+        
+        let ngrokUrl = null;
+        
+        // Set up ngrok if enabled
+        if (enableNgrok) {
+          try {
+            // Check for ngrok auth token
+            const ngrokToken = process.env.NGROK_AUTH_TOKEN;
+            
+            if (!ngrokToken) {
+              logger.warn('NGROK_AUTH_TOKEN not found in environment variables');
+              logger.warn('Ngrok may not work correctly without authentication');
+              logger.warn('Try specifying the token directly when starting the server:');
+              logger.warn('  NGROK_AUTH_TOKEN=your_token node bin/start-server.js');
+            } else {
+              // Configure ngrok with auth token
+              logger.info('Found NGROK_AUTH_TOKEN, authenticating...');
+              await ngrok.authtoken(ngrokToken);
+              logger.info('Ngrok authenticated successfully');
+            }
+            
+            // Start ngrok tunnel
+            ngrokUrl = await ngrok.connect({
+              addr: port,
+              region: 'us'
+            });
+            
+            logger.info(`Ngrok URL: ${ngrokUrl}`);
+            
+            // Save ngrok URL to file for future reference
+            const ngrokFilePath = path.join(process.cwd(), 'ngrok_url.txt');
+            await fs.writeFile(ngrokFilePath, ngrokUrl);
+            logger.info(`Ngrok URL saved to ${ngrokFilePath}`);
+          } catch (ngrokError) {
+            logger.error(`Failed to start ngrok: ${ngrokError.message}`);
+            logger.info('Continuing without ngrok...');
+          }
+        }
+        
+        resolve({
+          server,
+          localUrl: `http://localhost:${port}`,
+          ngrokUrl
+        });
+      });
+      
+      // Handle server errors
+      server.on('error', (error) => {
+        logger.error(`Server error: ${error.message}`);
+        reject(error);
+      });
+    } catch (error) {
+      logger.error(`Failed to start server: ${error.message}`);
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Stop the server and clean up resources
+ * 
+ * @param {Object} serverInfo Server info object
+ */
+async function stopServer(serverInfo) {
+  try {
+    // Close the server
+    if (serverInfo && serverInfo.server) {
+      await new Promise((resolve) => {
+        serverInfo.server.close(resolve);
+      });
+      logger.info('Server closed');
+    }
+    
+    // Disconnect ngrok
+    if (serverInfo && serverInfo.ngrokUrl) {
+      await ngrok.disconnect();
+      await ngrok.kill();
+      logger.info('Ngrok disconnected');
+    }
+  } catch (error) {
+    logger.error(`Error stopping server: ${error.message}`);
+  }
+}
+
+module.exports = {
+  startServer,
+  stopServer
+};
+```
+
 # src/tui/app.js
 
 ```js
@@ -2535,6 +5321,7 @@ const { createOutputRenderer } = require('./output');
 const { createStatusBar } = require('./statusBar');
 const { createFileTree } = require('./fileTree');
 const { logger } = require('../utils');
+const { createAgentCommandProcessor } = require('../agent/agentUtils');
 
 /**
  * Create the TUI application
@@ -2554,7 +5341,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     title: 'FrankCode',
     fullUnicode: true,
     dockBorders: true,
-    autoPadding: true
+    autoPadding: true,
+    sendFocus: false,
+    mouseEnabled: true,
+    useMouse: true
   });
 
   // Store config and project root in screen for access by components
@@ -2598,8 +5388,12 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     },
     // Add these settings for smoother scrolling
     mouse: true,
+    scrollable: true,
+    alwaysScroll: true,
+    scrollbar: true,
     keys: true,
-    vi: true,
+    vi: false,  // Turn off vi mode to enable normal selection
+    inputOnFocus: false,
     // Increase scroll amount for smoother experience
     scrollAmount: 3,
     // Lower scroll time for smoother animation
@@ -2733,6 +5527,34 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     screen
   });
 
+  try {
+    const agentCommandProcessor = createAgentCommandProcessor({
+      agent,
+      llm: apiClient,
+      screen,
+      outputRenderer
+    });
+  // Add to input handler
+  inputHandler.agentCommandProcessor = agentCommandProcessor;
+    
+  // Add help for agent commands
+  if (agentCommandProcessor) {
+    screen.key(['F1'], () => {
+      const exampleCommands = agentCommandProcessor.getExampleCommands();
+      
+      outputRenderer.addSystemMessage('\n📚 Agent Command Examples:');
+      exampleCommands.forEach(example => {
+        outputRenderer.addSystemMessage(`• ${example}`);
+      });
+      
+      outputRenderer.addSystemMessage('\nTry using these command patterns or press F1 again for more examples.');
+      screen.render();
+    });
+  }
+} catch (error) {
+  logger.error('Failed to initialize agent command processor:', error);
+  // Continue without agent capabilities
+}
   const renderInterval = setInterval(() => {
     screen.render();
   }, 100);
@@ -2777,37 +5599,365 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
 // Return the application object
 // Return the application object
 return {
-    screen,
-    statusBar: statusBarController,
-    start: () => {
-      // Initial rendering
-      screen.render();
-      
-      // Welcome message
-      outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
-      statusBarController.update('Ready');
-      
-      // Force render again after a short delay to ensure UI is properly displayed
-      setTimeout(() => {
-        screen.render();
-      }, 500);
-      
-      // Set up another timer to force periodic renders to keep UI responsive
-      setInterval(() => {
-        screen.render();
-      }, 1000);
-    },
-    destroy: () => {
-      if (renderInterval) {
-        clearInterval(renderInterval);
-      }
-      screen.destroy();
-    }
-  };
+  screen,
+  statusBar: statusBarController,
+  start: () => {
+    // Initial rendering
+    screen.render();
+    
+    // Welcome message
+    outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
+    statusBarController.update('Ready');
+    
+    // Other initialization...
+  },
+  destroy: () => {
+    // Cleanup code...
+    screen.destroy();
+  }
+};
 }
 
 module.exports = {
-  createApp
+createApp
+};
+```
+
+# src/tui/confirmation.js
+
+```js
+/**
+ * Confirmation UI Component for FrankCode Agent
+ * 
+ * This module provides UI components for confirming file operations
+ * with visual diffs and interactive prompts.
+ */
+
+const blessed = require('blessed');
+const chalk = require('chalk');
+const { logger } = require('../utils/logger');
+
+/**
+ * Create a confirmation dialog for file operations
+ * 
+ * @param {Object} screen The blessed screen object
+ * @param {Object} operation The operation result (from fileOperations.js)
+ * @returns {Promise<string>} User's choice ('yes', 'no', 'yes-to-all', 'custom')
+ */
+function createConfirmationDialog(screen, operation) {
+  return new Promise((resolve) => {
+    // Create a box for the confirmation dialog
+    const box = blessed.box({
+      top: 'center',
+      left: 'center',
+      width: '80%',
+      height: '80%',
+      border: {
+        type: 'line',
+        fg: 'blue'
+      },
+      tags: true,
+      keys: true,
+      vi: true,
+      mouse: true,
+      scrollable: true,
+      alwaysScroll: true,
+      scrollbar: {
+        ch: ' ',
+        bg: 'blue'
+      }
+    });
+    
+    // Create title based on operation type
+    let title;
+    switch (operation.operation) {
+      case 'update':
+        title = `{bold}Confirm Update: ${operation.filePath}{/bold}`;
+        break;
+      case 'create':
+        title = `{bold}Confirm Creation: ${operation.filePath}{/bold}`;
+        break;
+      case 'delete':
+        title = `{bold}Confirm Deletion: ${operation.filePath}{/bold}`;
+        break;
+      default:
+        title = `{bold}Confirm Operation: ${operation.operation}{/bold}`;
+    }
+    
+    // Add title
+    box.setLine(0, title);
+    box.setLine(1, '');
+    
+    // Add operation details
+    let lineIndex = 2;
+    
+    if (operation.operation === 'update') {
+      box.setLine(lineIndex++, `{yellow-fg}Changes: ${operation.additions} additions, ${operation.removals} removals{/yellow-fg}`);
+      box.setLine(lineIndex++, '');
+      
+      // Add diff display
+      if (operation.diffDisplay) {
+        // Convert chalk colors to blessed tags for the terminal UI
+        const diffDisplay = operation.diffDisplay
+          .replace(/\u001b\[32m/g, '{green-fg}') // green
+          .replace(/\u001b\[31m/g, '{red-fg}')   // red
+          .replace(/\u001b\[90m/g, '{grey-fg}')  // grey
+          .replace(/\u001b\[39m/g, '{/}');       // reset
+          
+        diffDisplay.split('\n').forEach((line) => {
+          box.setLine(lineIndex++, line);
+        });
+      } else {
+        // Simple diff
+        const oldLines = operation.originalContent.split('\n');
+        const newLines = operation.newContent.split('\n');
+        
+        for (let i = 0; i < Math.max(oldLines.length, newLines.length); i++) {
+          const oldLine = oldLines[i] !== undefined ? oldLines[i] : '';
+          const newLine = newLines[i] !== undefined ? newLines[i] : '';
+          
+          if (oldLine !== newLine) {
+            if (oldLine) {
+              box.setLine(lineIndex++, `{red-fg}- ${i + 1} ${oldLine}{/red-fg}`);
+            }
+            if (newLine) {
+              box.setLine(lineIndex++, `{green-fg}+ ${i + 1} ${newLine}{/green-fg}`);
+            }
+          } else {
+            box.setLine(lineIndex++, `  ${i + 1} ${oldLine}`);
+          }
+        }
+      }
+    } else if (operation.operation === 'create') {
+      box.setLine(lineIndex++, `{green-fg}New file: ${operation.filePath}{/green-fg}`);
+      box.setLine(lineIndex++, '');
+      
+      // Show content
+      const contentLines = operation.content.split('\n');
+      contentLines.forEach((line, index) => {
+        box.setLine(lineIndex++, `{green-fg}+ ${index + 1} ${line}{/green-fg}`);
+      });
+    } else if (operation.operation === 'delete') {
+      box.setLine(lineIndex++, `{red-fg}Delete file: ${operation.filePath}{/red-fg}`);
+      box.setLine(lineIndex++, '');
+      
+      // Show content being deleted
+      const contentLines = operation.content.split('\n');
+      contentLines.forEach((line, index) => {
+        box.setLine(lineIndex++, `{red-fg}- ${index + 1} ${line}{/red-fg}`);
+      });
+    }
+    
+    // Add empty line
+    box.setLine(lineIndex++, '');
+    
+    // Add buttons
+    const buttonsLine = lineIndex++;
+    box.setLine(buttonsLine, '{center}{bold}[Y]{/bold}es | {bold}[N]{/bold}o | {bold}[A]{/bold}ll | {bold}[C]{/bold}ustom | {bold}[Esc]{/bold} Cancel{/center}');
+    
+    // Add the box to the screen
+    screen.append(box);
+    
+    // Focus the box
+    box.focus();
+    
+    // Handle key events
+    box.key(['y', 'Y'], () => {
+      cleanup();
+      resolve('yes');
+    });
+    
+    box.key(['n', 'N'], () => {
+      cleanup();
+      resolve('no');
+    });
+    
+    box.key(['a', 'A'], () => {
+      cleanup();
+      resolve('yes-to-all');
+    });
+    
+    box.key(['c', 'C'], () => {
+      cleanup();
+      resolve('custom');
+    });
+    
+    box.key(['escape'], () => {
+      cleanup();
+      resolve('cancel');
+    });
+    
+    // Render the screen
+    screen.render();
+    
+    // Function to clean up the dialog
+    function cleanup() {
+      screen.remove(box);
+      screen.render();
+    }
+  });
+}
+
+/**
+ * Create a custom editor for modifying file content
+ * 
+ * @param {Object} screen The blessed screen object
+ * @param {Object} operation The operation result (from fileOperations.js)
+ * @returns {Promise<string>} Modified content or null if cancelled
+ */
+function createCustomEditor(screen, operation) {
+  return new Promise((resolve) => {
+    // Create a box for the editor
+    const box = blessed.textarea({
+      top: 'center',
+      left: 'center',
+      width: '90%',
+      height: '90%',
+      border: {
+        type: 'line',
+        fg: 'blue'
+      },
+      inputOnFocus: true,
+      keys: true,
+      vi: true,
+      mouse: true,
+      scrollable: true,
+      alwaysScroll: true,
+      scrollbar: {
+        ch: ' ',
+        bg: 'blue'
+      }
+    });
+    
+    // Set initial content
+    let initialContent;
+    if (operation.operation === 'update') {
+      initialContent = operation.newContent;
+    } else if (operation.operation === 'create') {
+      initialContent = operation.content;
+    } else {
+      initialContent = '';
+    }
+    
+    box.setValue(initialContent);
+    
+    // Create help text
+    const helpText = blessed.box({
+      bottom: 0,
+      left: 'center',
+      width: '100%',
+      height: 1,
+      content: '{bold}Ctrl-S{/bold} Save | {bold}Esc{/bold} Cancel',
+      tags: true
+    });
+    
+    // Create title
+    const title = blessed.box({
+      top: 0,
+      left: 'center',
+      width: '100%',
+      height: 1,
+      content: `{bold}Editing: ${operation.filePath}{/bold}`,
+      tags: true
+    });
+    
+    // Add the components to the screen
+    screen.append(box);
+    screen.append(helpText);
+    screen.append(title);
+    
+    // Focus the box
+    box.focus();
+    
+    // Handle key events
+    box.key(['C-s'], () => {
+      const content = box.getValue();
+      cleanup();
+      resolve(content);
+    });
+    
+    box.key(['escape'], () => {
+      cleanup();
+      resolve(null);
+    });
+    
+    // Render the screen
+    screen.render();
+    
+    // Function to clean up the editor
+    function cleanup() {
+      screen.remove(box);
+      screen.remove(helpText);
+      screen.remove(title);
+      screen.render();
+    }
+  });
+}
+
+/**
+ * Show a confirmation dialog for a file operation
+ * 
+ * @param {Object} screen The blessed screen object
+ * @param {Object} operation The operation result
+ * @returns {Promise<Object>} Confirmation result with user's choice
+ */
+async function confirmOperation(screen, operation) {
+  try {
+    // Log the confirmation request
+    logger.debug(`Requesting confirmation for operation: ${operation.operation}`, { filePath: operation.filePath });
+    
+    // Check if operation is valid
+    if (operation.status === 'error') {
+      return {
+        choice: 'error',
+        operation,
+        error: operation.error
+      };
+    }
+    
+    // Show confirmation dialog
+    const choice = await createConfirmationDialog(screen, operation);
+    
+    // Handle custom editing
+    let customContent = null;
+    if (choice === 'custom') {
+      customContent = await createCustomEditor(screen, operation);
+      
+      // If cancelled, return cancel
+      if (customContent === null) {
+        return {
+          choice: 'cancel',
+          operation
+        };
+      }
+      
+      // Update the operation with custom content
+      if (operation.operation === 'update' || operation.operation === 'create') {
+        operation.newContent = customContent;
+        operation.content = customContent;
+      }
+    }
+    
+    // Return the result
+    return {
+      choice,
+      operation,
+      customContent
+    };
+  } catch (error) {
+    logger.error(`Failed to confirm operation: ${operation.operation}`, { error });
+    return {
+      choice: 'error',
+      operation,
+      error: error.message
+    };
+  }
+}
+
+module.exports = {
+  confirmOperation,
+  createConfirmationDialog,
+  createCustomEditor
 };
 ```
 
@@ -3066,6 +6216,7 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const path = require('path');
+const { createConversationManager } = require('../agent/conversationManager');
 
 /**
  * Create an input handler
@@ -3086,6 +6237,9 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   // File modification tracking
   const pendingModifications = [];
   let currentModificationIndex = -1;
+  
+  // Agent command processor - will be set after initialization
+  let agentCommandProcessor = null;
   
   // Initialize
   function init() {
@@ -3141,7 +6295,172 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       widget.screen.render(); // Ensure UI updates
     });
   }
+  /**
+   * Clear the conversation history
+   */
+  async function clearConversation() {
+    try {
+      // Reset the agent's conversation history
+      agent.reset();
+      
+      // Clear the output display
+      outputRenderer.clear();
+      
+      // Display confirmation message
+      outputRenderer.addSystemMessage('Conversation history cleared.');
+      
+      logger.info('Conversation history cleared by user');
+    } catch (error) {
+      logger.error('Failed to clear conversation', { error });
+      outputRenderer.addErrorMessage(`Error clearing conversation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Generate a summary of the conversation history
+   */
+  async function generateSummary() {
+    try {
+      // Get conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to summarize.');
+        return;
+      }
+      
+      // Format the conversation
+      const formattedHistory = history.map(msg => {
+        // Clean up the content (remove thinking tags)
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}: ${cleanContent.substring(0, 300)}${cleanContent.length > 300 ? '...' : ''}`;
+      }).join('\n\n');
+      
+      // Create prompt for the LLM
+      const prompt = `Create a concise summary of this conversation between a user and FrankCode (an AI coding assistant). Format it with clear sections for:
+
+  1. Main topics and tasks discussed
+  2. Problems solved or features implemented
+  3. Files modified or discussed
+  4. Next steps based on the conversation
+  5. The most important achievements
+
+  Use bold headers (**Header:**) and bullet points. Here's the conversation:
+
+  ${formattedHistory}`;
+      
+      // Generate summary using the LLM
+      outputRenderer.addSystemMessage('Generating conversation summary...');
+      
+      const response = await apiClient.generateResponse(prompt, {
+        temperature: 0.3,
+        maxTokens: 1024
+      });
+      
+      return response.text;
+    } catch (error) {
+      logger.error('Failed to generate summary', { error });
+      outputRenderer.addErrorMessage(`Error generating summary: ${error.message}`);
+      return 'Failed to generate summary.';
+    }
+  }
+
+  /**
+   * Compact the conversation with a summary
+   */
+  async function compactConversation() {
+    try {
+      // Generate summary
+      const summary = await generateSummary();
+      
+      if (!summary) {
+        return;
+      }
+      
+      // Reset the agent state
+      agent.reset();
+      
+      // Add summary as context
+      agent.addSystemContext(summary);
+      
+      // Clear the output display
+      outputRenderer.clear();
+      
+      // Display the summary
+      outputRenderer.addSystemMessage('***Session Summary***');
+      
+      // Format and display the summary
+      const summaryLines = summary.split('\n');
+      for (const line of summaryLines) {
+        outputRenderer.addSystemMessage(line);
+      }
+      
+      outputRenderer.addSystemMessage('\nConversation history has been compacted. The summary above has been retained in context.');
+      
+      logger.info('Conversation compacted with summary');
+    } catch (error) {
+      logger.error('Failed to compact conversation', { error });
+      outputRenderer.addErrorMessage(`Error compacting conversation: ${error.message}`);
+    }
+  }
+
+  /**
+   * Export the conversation to a file
+   */
+  async function exportConversation(filePath) {
+    try {
+      // Create default filename if none provided
+      if (!filePath) {
+        filePath = `conversation_${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+      }
+      
+      // Get absolute path
+      const fullPath = path.isAbsolute(filePath) ? filePath : path.join(screen.cwd, filePath);
+      
+      // Get conversation history
+      const history = agent.getConversationHistory();
+      
+      if (!history || history.length === 0) {
+        outputRenderer.addSystemMessage('No conversation history to export.');
+        return;
+      }
+      
+      // Generate summary
+      const summary = await generateSummary();
+      
+      // Format the conversation (remove thinking tags)
+      const formattedHistory = history.map(msg => {
+        const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+        return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
+      }).join('');
+      
+      // Combine summary and history
+      const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+      
+      // Ensure directory exists
+      const dirPath = path.dirname(fullPath);
+      try {
+        await require('fs').promises.mkdir(dirPath, { recursive: true });
+      } catch (error) {
+        // Ignore directory exists error
+      }
+      
+      // Write to file
+      await require('fs').promises.writeFile(fullPath, content, 'utf8');
+      
+      outputRenderer.addSystemMessage(`Conversation with summary exported to ${fullPath}`);
+      logger.info(`Conversation exported to ${fullPath}`);
+    } catch (error) {
+      logger.error('Failed to export conversation', { error });
+      outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+    }
+  }
   
+  /**
+   * Process user input
+   * 
+   * @param {string} input User input
+   */
   /**
    * Process user input
    * 
@@ -3158,6 +6477,14 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       // Display user input
       outputRenderer.addUserMessage(input);
       
+      // Check if this might be an agent task
+      if (agentCommandProcessor && agentCommandProcessor.isPotentialAgentTask(input)) {
+        const wasHandled = await agentCommandProcessor.processCommand(input);
+        if (wasHandled) {
+          return;
+        }
+      }
+      
       try {
         // Send to agent for processing
         const response = await agent.processMessage(input);
@@ -3169,6 +6496,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           // Check for file modifications
           if (response.fileModifications && response.fileModifications.length > 0) {
             await handleFileModifications(response.fileModifications);
+          }
+          
+          // Check if this looks like a potential agent task that wasn't recognized
+          const suggestion = agentCommandProcessor ? agentCommandProcessor.suggestAgentCapability(input) : null;
+          if (suggestion) {
+            outputRenderer.addSystemMessage(`💡 ${suggestion}`);
+            
+            // Show examples occasionally (20% chance)
+            if (Math.random() < 0.2) {
+              const examples = agentCommandProcessor.getExampleCommands();
+              const randomExample = examples[Math.floor(Math.random() * examples.length)];
+              outputRenderer.addSystemMessage(`Example: "${randomExample}"`);
+            }
           }
         } else {
           outputRenderer.addErrorMessage('No response received from the agent.');
@@ -3217,10 +6557,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           break;
         
         case 'clear':
-          outputRenderer.clear();
+          await clearConversation();
           break;
         
+        case 'compact':
+          await compactConversation();
+          break;
+        
+        case 'export':
+          await exportConversation(args[0]);
+          break;
         case 'exit':
+          process.exit(0);
+          break;
         case 'quit':
           process.exit(0);
           break;
@@ -3294,6 +6643,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           
         case 'online':
           setOfflineMode(false);
+          break;
+
+        case 'agent':
+          if (args.length > 0) {
+            const task = args.join(' ');
+            if (agentCommandProcessor) {
+              await agentCommandProcessor.executeTask(task);
+            } else {
+              outputRenderer.addErrorMessage('Agent command processor not initialized');
+            }
+          } else {
+            outputRenderer.addSystemMessage('Please provide a task for the agent');
+          }
           break;
         
         default:
@@ -3436,8 +6798,9 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     const helpText = `
   Available commands:
     /help             - Show this help text
-    /clear            - Clear the conversation
-    /exit, /quit      - Exit the application
+    /clear            - Clear the conversation history
+    /compact          - Compact conversation history into a summary
+    /export [file]    - Export conversation with summary to a file    /exit, /quit      - Exit the application
     /refresh          - Refresh the file tree
     /exec <command>   - Execute a shell command
     /shell <command>  - Same as /exec
@@ -3742,14 +7105,28 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     }
   }
   
-  // Initialize immediately
   init();
-  
+
+  // Create conversation manager
+  let conversationManager = null;
+  try {
+    conversationManager = createConversationManager({
+      agent,
+      outputRenderer,
+      llm: apiClient
+    });
+    logger.debug('Conversation manager initialized');
+  } catch (error) {
+    logger.error('Failed to initialize conversation manager', { error });
+  }
+
   // Return the input handler interface
   return {
     processInput,
     processCommand,
-    handleFileModifications
+    handleFileModifications,
+    agentCommandProcessor, // Allow setting from outside
+    conversationManager    // Add this to make it accessible from outside if needed
   };
 }
 
