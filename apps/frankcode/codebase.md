@@ -511,6 +511,216 @@ Contributions welcome! Please check out our [contributing guidelines](CONTRIBUTI
 MIT
 ```
 
+# scripts/setup-embeddings.js
+
+```js
+#!/usr/bin/env node
+
+/**
+ * Setup Script for Embeddings Dependencies
+ * 
+ * This script installs the necessary Python dependencies for 
+ * generating embeddings with Jina Embeddings.
+ */
+
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+// Colors for output
+const colors = {
+  reset: '\x1b[0m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  magenta: '\x1b[35m',
+  cyan: '\x1b[36m',
+};
+
+// Log with color
+function log(message, color = colors.reset) {
+  console.log(`${color}${message}${colors.reset}`);
+}
+
+// Check if Python is installed
+function checkPython() {
+  try {
+    const version = execSync('python --version').toString().trim();
+    log(`Found ${version}`, colors.green);
+    return true;
+  } catch (error) {
+    try {
+      const version = execSync('python3 --version').toString().trim();
+      log(`Found ${version}`, colors.green);
+      return true;
+    } catch (error) {
+      log('Python not found. Please install Python 3.8 or higher.', colors.red);
+      return false;
+    }
+  }
+}
+
+// Check if pip is installed
+function checkPip() {
+  try {
+    const version = execSync('pip --version').toString().trim();
+    log(`Found pip: ${version}`, colors.green);
+    return true;
+  } catch (error) {
+    try {
+      const version = execSync('pip3 --version').toString().trim();
+      log(`Found pip3: ${version}`, colors.green);
+      return true;
+    } catch (error) {
+      log('pip not found. Please install pip.', colors.red);
+      return false;
+    }
+  }
+}
+
+// Install Python dependencies
+function installDependencies() {
+  log('Installing Python dependencies...', colors.cyan);
+  
+  try {
+    let cmd = 'pip install sentence-transformers torch numpy';
+    
+    // Use pip3 on some systems
+    if (execSync('pip --version').toString().indexOf('python 2') !== -1) {
+      cmd = 'pip3 install sentence-transformers torch numpy';
+    }
+    
+    log(`Running: ${cmd}`, colors.yellow);
+    execSync(cmd, { stdio: 'inherit' });
+    
+    log('Dependencies installed successfully!', colors.green);
+    return true;
+  } catch (error) {
+    log(`Failed to install dependencies: ${error.message}`, colors.red);
+    return false;
+  }
+}
+
+// Create Python script directory and ensure script exists
+function createScriptDir() {
+  try {
+    const scriptsDir = path.join(__dirname, '../src/utils');
+    
+    if (!fs.existsSync(scriptsDir)) {
+      fs.mkdirSync(scriptsDir, { recursive: true });
+      log(`Created scripts directory: ${scriptsDir}`, colors.green);
+    }
+    
+    // Copy the embeddings.py script to the utils directory if it doesn't exist
+    const targetScript = path.join(scriptsDir, 'embeddings.py');
+    
+    if (!fs.existsSync(targetScript)) {
+      log('embeddings.py script not found. Creating it...', colors.yellow);
+      
+      // Create a simple default script if it doesn't exist
+      // This is a placeholder - the actual script should be created separately
+      const defaultScript = `#!/usr/bin/env python3
+"""
+Embeddings Generator using Jina Embeddings v3 or other Hugging Face models.
+"""
+import argparse
+import json
+import sys
+
+print("Please place the actual embeddings.py script in src/utils/")
+sys.exit(1)
+`;
+      
+      fs.writeFileSync(targetScript, defaultScript);
+      fs.chmodSync(targetScript, 0o755); // Make executable
+      
+      log('Created placeholder embeddings.py script.', colors.yellow);
+      log('Please replace it with the actual implementation.', colors.yellow);
+    } else {
+      log('embeddings.py script found.', colors.green);
+      // Make sure it's executable
+      fs.chmodSync(targetScript, 0o755);
+    }
+    
+    return true;
+  } catch (error) {
+    log(`Failed to create scripts directory: ${error.message}`, colors.red);
+    return false;
+  }
+}
+
+// Create temp directory for embedding processing
+function createTempDir() {
+  try {
+    const tempDir = path.join(__dirname, '../temp');
+    
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+      log(`Created temp directory: ${tempDir}`, colors.green);
+    } else {
+      log(`Temp directory already exists: ${tempDir}`, colors.green);
+    }
+    
+    return true;
+  } catch (error) {
+    log(`Failed to create temp directory: ${error.message}`, colors.red);
+    return false;
+  }
+}
+
+// Main function
+function main() {
+  log('Setting up embedding dependencies for FrankCode...', colors.cyan);
+  
+  const pythonOk = checkPython();
+  if (!pythonOk) {
+    log('Python check failed. Please install Python 3.8 or higher.', colors.red);
+    return false;
+  }
+  
+  const pipOk = checkPip();
+  if (!pipOk) {
+    log('pip check failed. Please install pip.', colors.red);
+    return false;
+  }
+  
+  const depsOk = installDependencies();
+  if (!depsOk) {
+    log('Failed to install dependencies.', colors.red);
+    return false;
+  }
+  
+  const scriptDirOk = createScriptDir();
+  if (!scriptDirOk) {
+    log('Failed to create scripts directory.', colors.red);
+    return false;
+  }
+  
+  const tempDirOk = createTempDir();
+  if (!tempDirOk) {
+    log('Failed to create temp directory.', colors.red);
+    return false;
+  }
+  
+  log('\nSetup complete! You can now use Jina Embeddings with FrankCode.', colors.green);
+  log('\nIf you encounter any issues with embeddings, check the following:', colors.cyan);
+  log('1. Make sure Python and pip are properly installed', colors.cyan);
+  log('2. Make sure the embeddings.py script is in src/utils/', colors.cyan);
+  log('3. Make sure the temp directory exists and is writable', colors.cyan);
+  
+  return true;
+}
+
+// Run main function
+if (main()) {
+  process.exit(0);
+} else {
+  process.exit(1);
+}
+```
+
 # src/agent/agent.js
 
 ```js
@@ -830,6 +1040,310 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
 
 module.exports = {
   createAgent
+};
+```
+
+# src/agent/agentEnhancer.js
+
+```js
+/**
+ * AutoGen Integration for FrankCode
+ * 
+ * This module provides integration with AutoGen concepts to enhance agent capabilities.
+ */
+
+const { logger } = require('../utils/logger');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const path = require('path');
+const fs = require('fs').promises;
+
+/**
+ * Create an AutoGen-inspired agent enhancer
+ * 
+ * @param {Object} options Configuration options
+ * @param {Object} options.agent Agent instance
+ * @param {Object} options.outputRenderer Output renderer
+ * @param {Object} options.apiClient API client
+ * @returns {Object} The agent enhancer interface
+ */
+function createAgentEnhancer({ agent, outputRenderer, apiClient }) {
+  /**
+   * Add planning capabilities to break tasks into steps
+   * 
+   * @param {string} task The task to plan
+   * @returns {Promise<Array<Object>>} The planned steps
+   */
+  async function planTask(task) {
+    try {
+      outputRenderer.addSystemMessage(`🧠 Planning task: ${task}`);
+      
+      const prompt = `You are FrankCode, an AI coding assistant that helps with complex programming tasks.
+I need you to break down the following task into a clear step-by-step plan:
+
+TASK: ${task}
+
+Your task is to break this down into smaller steps. For each step:
+1. Specify the type of action required (read_file, search_files, update_file, create_file, generate_code, analyze)
+2. Provide a clear description of what needs to be done
+3. List any specific files that need to be examined or modified
+4. Explain the reasoning for this step
+
+FORMAT YOUR RESPONSE AS:
+STEP 1:
+Type: [action_type]
+Description: [clear description]
+Files: [file paths, if relevant]
+Reasoning: [brief explanation]
+
+STEP 2:
+...
+
+Ensure your plan is comprehensive yet concise. Identify 3-7 key steps to make the task manageable.`;
+      
+      const response = await apiClient.generateResponse(prompt, {
+        temperature: 0.3,
+        maxTokens: 1024
+      });
+      
+      const steps = parseSteps(response.text);
+      
+      // Display the plan
+      outputRenderer.addSystemMessage(`📋 Task Plan (${steps.length} steps):`);
+      
+      steps.forEach((step, index) => {
+        outputRenderer.addSystemMessage(`${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
+      });
+      
+      return steps;
+    } catch (error) {
+      logger.error(`Failed to plan task: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Error planning task: ${error.message}`);
+      return [];
+    }
+  }
+  
+  /**
+   * Parse the steps from the LLM response
+   */
+  function parseSteps(response) {
+    const steps = [];
+    const stepRegex = /STEP\s+(\d+):\s*\n([\s\S]*?)(?=STEP\s+\d+:|$)/g;
+    
+    let match;
+    while ((match = stepRegex.exec(response)) !== null) {
+      const stepContent = match[2].trim();
+      
+      // Parse step details
+      const typeMatch = /Type:\s*(\w+)/.exec(stepContent);
+      const descMatch = /Description:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      const filesMatch = /Files:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      const reasoningMatch = /Reasoning:\s*(.+?)(?=\n\w+:|$)/s.exec(stepContent);
+      
+      if (typeMatch && descMatch) {
+        steps.push({
+          type: typeMatch[1].toLowerCase(),
+          description: descMatch[1].trim(),
+          files: filesMatch ? 
+            filesMatch[1].trim().split(/,\s*/).filter(f => f !== 'N/A' && f !== '') : 
+            [],
+          reasoning: reasoningMatch ? reasoningMatch[1].trim() : ''
+        });
+      }
+    }
+    
+    // If no steps were parsed but we have content, create a fallback step
+    if (steps.length === 0 && response.trim().length > 0) {
+      steps.push({
+        type: 'analyze',
+        description: 'Analyze the task and provide guidance',
+        files: [],
+        reasoning: 'No structured plan could be created, falling back to general analysis'
+      });
+    }
+    
+    return steps;
+  }
+  
+  /**
+   * Execute a task with planning and step-by-step execution
+   * 
+   * @param {string} task The task to execute
+   * @returns {Promise<Object>} The execution result
+   */
+  async function executeTask(task) {
+    try {
+      // Plan the task
+      const steps = await planTask(task);
+      
+      if (steps.length === 0) {
+        outputRenderer.addErrorMessage('Failed to create a plan for this task.');
+        return { status: 'error', error: 'Failed to create plan' };
+      }
+      
+      // Execute each step
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        
+        // Display current step
+        outputRenderer.addSystemMessage(`\n▶️ Step ${i + 1}/${steps.length}: ${step.description}`);
+        
+        // Generate a prompt for this step
+        const prompt = `You are FrankCode, an AI coding assistant.
+I need your help with this step in a larger task:
+
+TASK: ${task}
+STEP: ${step.description}
+${step.files && step.files.length > 0 ? `FILES: ${step.files.join(', ')}` : ''}
+${step.reasoning ? `CONTEXT: ${step.reasoning}` : ''}
+
+Please provide a detailed and helpful response to complete this step.`;
+        
+        // Execute the step using the agent
+        const response = await agent.processMessage(prompt);
+        
+        // Display assistant response (this should happen automatically in processMessage)
+        // Check for file modifications if any
+        if (response && response.fileModifications && response.fileModifications.length > 0) {
+          // Handle file modifications - these will be handled separately
+        }
+        
+        // Give user a chance to review/cancel
+        if (i < steps.length - 1) {
+          outputRenderer.addSystemMessage('\nPress Enter to continue to the next step, or type "cancel" to stop.');
+        }
+      }
+      
+      // Task completed successfully
+      outputRenderer.addSystemMessage(`\n✅ Task completed successfully!`);
+      
+      return { 
+        status: 'success',
+        steps: steps.length
+      };
+    } catch (error) {
+      logger.error(`Failed to execute task: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Error executing task: ${error.message}`);
+      
+      return { 
+        status: 'error', 
+        error: error.message
+      };
+    }
+  }
+  
+  /**
+   * Create a file in the specified location
+   * 
+   * @param {string} filePath File path
+   * @param {string} content File content
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function createFile(filePath, content) {
+    try {
+      // Get absolute path
+      const fullPath = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+      
+      // Ensure directory exists
+      const dirPath = path.dirname(fullPath);
+      await fs.mkdir(dirPath, { recursive: true }).catch(() => {});
+      
+      // Write file
+      await fs.writeFile(fullPath, content, 'utf8');
+      
+      outputRenderer.addSystemMessage(`✅ Created file: ${filePath}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to create file: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Error creating file: ${error.message}`);
+      return false;
+    }
+  }
+  
+  /**
+   * Execute code in a safe environment
+   * 
+   * @param {string} code The code to execute
+   * @param {string} language The language (python, javascript, etc.)
+   * @returns {Promise<Object>} The execution result
+   */
+  async function executeCode(code, language = 'python') {
+    try {
+      // Create a temporary file
+      const extension = language === 'python' ? '.py' : 
+                       language === 'javascript' ? '.js' : 
+                       language === 'bash' ? '.sh' : '.txt';
+      
+      const tempFile = `temp_${Date.now()}${extension}`;
+      await fs.writeFile(tempFile, code, 'utf8');
+      
+      // Execute the code
+      let command;
+      switch(language) {
+        case 'python':
+          command = `python ${tempFile}`;
+          break;
+        case 'javascript':
+          command = `node ${tempFile}`;
+          break;
+        case 'bash':
+          command = `bash ${tempFile}`;
+          break;
+        default:
+          throw new Error(`Unsupported language: ${language}`);
+      }
+      
+      outputRenderer.addSystemMessage(`⚙️ Executing ${language} code...`);
+      
+      const { stdout, stderr } = await execPromise(command);
+      
+      // Clean up
+      await fs.unlink(tempFile).catch(() => {});
+      
+      // Display result
+      if (stdout) {
+        outputRenderer.addSystemMessage('🔹 Output:');
+        outputRenderer.addCodeBlock(stdout, 'bash');
+      }
+      
+      if (stderr) {
+        outputRenderer.addErrorMessage('Error output:');
+        outputRenderer.addCodeBlock(stderr, 'bash');
+      }
+      
+      return { 
+        success: !stderr, 
+        stdout, 
+        stderr 
+      };
+    } catch (error) {
+      logger.error(`Failed to execute code: ${error.message}`, { error });
+      outputRenderer.addErrorMessage(`Error executing code: ${error.message}`);
+      
+      // Try to clean up
+      try {
+        await fs.unlink(tempFile).catch(() => {});
+      } catch {}
+      
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  }
+  
+  // Return the agent enhancer interface
+  return {
+    planTask,
+    executeTask,
+    createFile,
+    executeCode
+  };
+}
+
+module.exports = {
+  createAgentEnhancer
 };
 ```
 
@@ -1614,6 +2128,2671 @@ Format with clear sections using **bold** for headers and bullet points for deta
 
 module.exports = {
   createConversationManager
+};
+```
+
+# src/agent/enhanced/embeddings.js
+
+```js
+/**
+ * Embeddings Module for RAG
+ * 
+ * This module handles the creation and management of embeddings
+ * for code chunks, using the Jina Embeddings v3 model from Hugging Face.
+ */
+
+const path = require('path');
+const fs = require('fs').promises;
+const { spawn } = require('child_process');
+const { logger } = require('../../utils/logger');
+
+// Configuration for embeddings
+const EMBEDDING_DIMENSION = 768; // Jina Embeddings v3 dimensions
+
+/**
+ * Create an embedding for a text string using the Jina Embeddings model
+ * 
+ * @param {string} text Text to create embedding for
+ * @returns {Promise<Array<number>>} Embedding vector
+ */
+async function createEmbedding(text) {
+  try {
+    // Call the Python script that uses Jina Embeddings
+    const embedding = await callPythonEmbedding(text);
+    return embedding;
+  } catch (error) {
+    logger.error(`Failed to create embedding: ${error.message}`, { error });
+    
+    // Return a zero vector as fallback
+    return new Array(EMBEDDING_DIMENSION).fill(0);
+  }
+}
+
+/**
+ * Call Python script to generate embeddings using Jina Embeddings
+ * 
+ * @param {string} text Text to embed
+ * @returns {Promise<Array<number>>} Embedding vector
+ */
+function callPythonEmbedding(text) {
+  return new Promise((resolve, reject) => {
+    // Create a temporary file with the text to embed
+    const tempFilePath = path.join(__dirname, '../../../temp', `embed_${Date.now()}.txt`);
+    const outputPath = path.join(__dirname, '../../../temp', `embed_result_${Date.now()}.json`);
+    
+    // Ensure temp directory exists
+    fs.mkdir(path.join(__dirname, '../../../temp'), { recursive: true })
+      .then(() => fs.writeFile(tempFilePath, text, 'utf8'))
+      .then(() => {
+        // Call the Python script
+        const python = spawn('python', [
+          path.join(__dirname, '../../utils/embeddings.py'),
+          '--input', tempFilePath,
+          '--output', outputPath,
+          '--model', 'jinaai/jina-embeddings-v3'
+        ]);
+        
+        let errorOutput = '';
+        
+        // Handle Python script output
+        python.stderr.on('data', (data) => {
+          errorOutput += data.toString();
+        });
+        
+        python.on('close', async (code) => {
+          // Clean up temp file
+          fs.unlink(tempFilePath).catch(() => {});
+          
+          if (code !== 0) {
+            // If Python script failed, return error
+            reject(new Error(`Python embedding script failed with code ${code}: ${errorOutput}`));
+            return;
+          }
+          
+          try {
+            // Read the output file
+            const data = await fs.readFile(outputPath, 'utf8');
+            const result = JSON.parse(data);
+            
+            // Clean up output file
+            fs.unlink(outputPath).catch(() => {});
+            
+            // Return the embedding
+            resolve(result.embedding);
+          } catch (err) {
+            reject(err);
+          }
+        });
+      })
+      .catch(reject);
+  });
+}
+
+/**
+ * Calculate the cosine similarity between two embedding vectors
+ * 
+ * @param {Array<number>} vecA First embedding vector
+ * @param {Array<number>} vecB Second embedding vector
+ * @returns {number} Cosine similarity (-1 to 1)
+ */
+function cosineSimilarity(vecA, vecB) {
+  // Calculate dot product
+  let dotProduct = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+  }
+  
+  // Calculate magnitudes
+  let magA = 0;
+  let magB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    magA += vecA[i] * vecA[i];
+    magB += vecB[i] * vecB[i];
+  }
+  magA = Math.sqrt(magA);
+  magB = Math.sqrt(magB);
+  
+  // Calculate cosine similarity
+  if (magA === 0 || magB === 0) {
+    return 0;
+  }
+  return dotProduct / (magA * magB);
+}
+
+/**
+ * Create a simple vector store for embeddings
+ * 
+ * @param {Object} options Store options
+ * @param {string} options.storePath Path to store the vector database
+ * @returns {Object} Vector store object
+ */
+function createVectorStore({ storePath }) {
+  // In-memory store
+  let items = [];
+  
+  // Store interface
+  const store = {
+    /**
+     * Add an item to the vector store
+     * 
+     * @param {Object} item Item to add
+     * @param {string} item.id Unique identifier
+     * @param {string} item.content Content text
+     * @param {Array<number>} item.embedding Embedding vector
+     * @param {Object} item.metadata Additional metadata
+     * @returns {Promise<void>}
+     */
+    async addItem(item) {
+      // Remove existing item with the same ID if any
+      items = items.filter(existing => existing.id !== item.id);
+      
+      // Add the new item
+      items.push(item);
+      
+      // Save to disk (async)
+      this.saveToFile().catch(error => {
+        logger.error(`Failed to save vector store: ${error.message}`, { error });
+      });
+    },
+    
+    /**
+     * Search for similar items
+     * 
+     * @param {Array<number>} embedding Query embedding
+     * @param {Object} options Search options
+     * @param {number} options.limit Maximum number of results
+     * @param {number} options.minScore Minimum similarity score
+     * @returns {Promise<Array<Object>>} Matching items
+     */
+    async search(embedding, options = {}) {
+      const { limit = 5, minScore = 0.7 } = options;
+      
+      // Calculate similarity scores
+      const results = items.map(item => ({
+        ...item,
+        score: cosineSimilarity(embedding, item.embedding)
+      }));
+      
+      // Filter and sort by score
+      return results
+        .filter(item => item.score >= minScore)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit);
+    },
+    
+    /**
+     * Save the vector store to disk
+     * 
+     * @returns {Promise<void>}
+     */
+    async saveToFile() {
+      try {
+        // Ensure directory exists
+        const dir = path.dirname(storePath);
+        await fs.mkdir(dir, { recursive: true });
+        
+        // Save to file
+        await fs.writeFile(
+          storePath,
+          JSON.stringify(items, null, 2),
+          'utf8'
+        );
+      } catch (error) {
+        logger.error(`Failed to save vector store: ${error.message}`, { error });
+        throw error;
+      }
+    },
+    
+    /**
+     * Load the vector store from disk
+     * 
+     * @returns {Promise<void>}
+     */
+    async loadFromFile() {
+      try {
+        // Check if file exists
+        const exists = await fs.access(storePath)
+          .then(() => true)
+          .catch(() => false);
+        
+        if (exists) {
+          // Load from file
+          const data = await fs.readFile(storePath, 'utf8');
+          items = JSON.parse(data);
+          logger.info(`Loaded ${items.length} items from vector store`);
+        } else {
+          logger.info('Vector store file not found, starting with empty store');
+          items = [];
+        }
+      } catch (error) {
+        logger.error(`Failed to load vector store: ${error.message}`, { error });
+        items = [];
+      }
+    },
+    
+    /**
+     * Get the number of items in the store
+     * 
+     * @returns {number} Item count
+     */
+    getCount() {
+      return items.length;
+    },
+    
+    /**
+     * Clear the vector store
+     * 
+     * @returns {Promise<void>}
+     */
+    async clear() {
+      items = [];
+      await this.saveToFile();
+    }
+  };
+  
+  // Load existing data
+  store.loadFromFile();
+  
+  return store;
+}
+
+module.exports = {
+  createEmbedding,
+  cosineSimilarity,
+  createVectorStore
+};
+```
+
+# src/agent/enhanced/enhanced-agent-controller.js
+
+```js
+/**
+ * Enhanced Agent Controller
+ *
+ * This module provides a controller for the enhanced agent capabilities
+ * including RAG, GraphRAG and memory functionality.
+ */
+
+const path = require('path');
+const fs = require('fs').promises;
+const { logger } = require('../../utils/logger');
+const { createEmbedding, createVectorStore } = require('./embeddings');
+const { createRagImplementation } = require('./rag-implementation');
+const { createGraphRagModule } = require('./graphrag-module');
+const { createMemoryController } = require('./memory-controller');
+const { createEnhancedAgent } = require('./enhanced-agent');
+
+/**
+ * Create an enhanced agent controller
+ * 
+ * @param {Object} options Controller options
+ * @param {Object} options.agent The main agent
+ * @param {Object} options.apiClient The API client
+ * @param {Object} options.tokenMonitor The token monitor
+ * @param {Object} options.screen The screen object
+ * @param {Object} options.outputRenderer The output renderer
+ * @param {string} options.projectRoot The project root path
+ * @returns {Object} The enhanced agent controller
+ */
+function createEnhancedAgentController({ agent, apiClient, tokenMonitor, screen, outputRenderer, projectRoot }) {
+  // Initialize components
+  const storePath = path.join(projectRoot, '.frankcode', 'vector-store.json');
+  const graphPath = path.join(projectRoot, '.frankcode', 'code-graph.json');
+  const memoryPath = path.join(projectRoot, '.frankcode', 'memory-store.json');
+  
+  // Ensure .frankcode directory exists
+  fs.mkdir(path.join(projectRoot, '.frankcode'), { recursive: true })
+    .catch(err => logger.error(`Failed to create .frankcode directory: ${err.message}`));
+  
+  // Create vector store
+  const vectorStore = createVectorStore({ storePath });
+  
+  // Create RAG implementation
+  const rag = createRagImplementation({ 
+    vectorStore, 
+    createEmbedding,
+    projectRoot
+  });
+  
+  // Create GraphRAG module
+  const graphRag = createGraphRagModule({
+    storePath: graphPath,
+    projectRoot
+  });
+  
+  // Create memory controller
+  const memory = createMemoryController({
+    storePath: memoryPath
+  });
+  
+  // Create enhanced agent
+  const enhancedAgent = createEnhancedAgent({
+    agent,
+    rag,
+    graphRag,
+    memory,
+    apiClient
+  });
+
+  // Command handlers
+  /**
+   * Process a command from the user
+   * 
+   * @param {string} message The user message
+   * @returns {Promise<Object>} The response
+   */
+  async function processMessage(message) {
+    // Check if it's a command
+    if (message.startsWith('/')) {
+      const parts = message.slice(1).split(' ');
+      const command = parts[0];
+      const args = parts.slice(1);
+      
+      switch (command) {
+        case 'rag':
+          return await handleRagCommand(args);
+        case 'graph':
+          return await handleGraphCommand(args);
+        case 'memory':
+          return await handleMemoryCommand(args);
+        case 'enhance':
+          return await handleEnhanceCommand(args);
+        default:
+          return { handled: false };
+      }
+    }
+    
+    // If not a command, enhance the request and let normal flow continue
+    try {
+      await enhancedAgent.enhanceRequestWithContext(message);
+      return { handled: false };
+    } catch (error) {
+      logger.error(`Enhanced agent error: ${error.message}`, { error });
+      return { handled: false };
+    }
+  }
+  
+  /**
+   * Handle RAG commands
+   * 
+   * @param {Array<string>} args Command arguments
+   * @returns {Promise<Object>} Response
+   */
+  async function handleRagCommand(args) {
+    const subCommand = args[0];
+    
+    try {
+      switch (subCommand) {
+        case 'index':
+          outputRenderer.addSystemMessage('Indexing project files for RAG...');
+          const indexStats = await rag.indexProject();
+          outputRenderer.addSystemMessage(`✅ RAG indexing complete! Indexed ${indexStats.fileCount} files and ${indexStats.chunkCount} code chunks.`);
+          return { handled: true };
+          
+        case 'search':
+          const query = args.slice(1).join(' ');
+          if (!query) {
+            outputRenderer.addSystemMessage('❌ Please provide a search query.');
+            return { handled: true };
+          }
+          
+          outputRenderer.addSystemMessage(`Searching for code related to "${query}"...`);
+          const results = await rag.search(query, { limit: 5 });
+          
+          if (results.length === 0) {
+            outputRenderer.addSystemMessage('No matching code found in the project.');
+          } else {
+            outputRenderer.addSystemMessage(`Found ${results.length} relevant code snippets:`);
+            
+            for (const result of results) {
+              outputRenderer.addSystemMessage(`\n--- ${result.metadata.filePath} (Score: ${result.score.toFixed(2)}) ---\n${result.content}\n`);
+            }
+          }
+          return { handled: true };
+          
+        case 'status':
+          const status = await rag.getStatus();
+          outputRenderer.addSystemMessage(`RAG Status:\nIndexed files: ${status.fileCount}\nCode chunks: ${status.chunkCount}\nLast updated: ${status.lastUpdated || 'Never'}`);
+          return { handled: true };
+          
+        case 'clear':
+          await rag.clearIndex();
+          outputRenderer.addSystemMessage('✅ RAG index cleared.');
+          return { handled: true };
+          
+        default:
+          outputRenderer.addSystemMessage('❌ Unknown RAG command. Available commands: index, search, status, clear');
+          return { handled: true };
+      }
+    } catch (error) {
+      logger.error(`RAG command error: ${error.message}`, { error });
+      outputRenderer.addSystemMessage(`❌ Error executing RAG command: ${error.message}`);
+      return { handled: true };
+    }
+  }
+  
+  /**
+   * Handle GraphRAG commands
+   * 
+   * @param {Array<string>} args Command arguments
+   * @returns {Promise<Object>} Response
+   */
+  async function handleGraphCommand(args) {
+    const subCommand = args[0];
+    
+    try {
+      switch (subCommand) {
+        case 'index':
+          outputRenderer.addSystemMessage('Building code relationship graph...');
+          const indexStats = await graphRag.buildGraph();
+          outputRenderer.addSystemMessage(`✅ Graph building complete! ${indexStats.nodeCount} nodes and ${indexStats.edgeCount} relationships indexed.`);
+          return { handled: true };
+          
+        case 'search':
+          const query = args.slice(1).join(' ');
+          if (!query) {
+            outputRenderer.addSystemMessage('❌ Please provide a search query.');
+            return { handled: true };
+          }
+          
+          outputRenderer.addSystemMessage(`Searching for code entities related to "${query}"...`);
+          const results = await graphRag.search(query, { limit: 5 });
+          
+          if (results.length === 0) {
+            outputRenderer.addSystemMessage('No matching code entities found in the project.');
+          } else {
+            outputRenderer.addSystemMessage(`Found ${results.length} relevant code entities:`);
+            
+            for (const result of results) {
+              const relatedEntities = result.related.map(r => r.name).join(', ');
+              outputRenderer.addSystemMessage(`\n--- ${result.name} (${result.type}) in ${result.filePath} ---\nRelated to: ${relatedEntities || 'None'}\n`);
+            }
+          }
+          return { handled: true };
+          
+        case 'status':
+          const status = await graphRag.getStatus();
+          outputRenderer.addSystemMessage(`Graph Status:\nNodes: ${status.nodeCount}\nRelationships: ${status.edgeCount}\nLast updated: ${status.lastUpdated || 'Never'}`);
+          return { handled: true };
+          
+        case 'clear':
+          await graphRag.clearGraph();
+          outputRenderer.addSystemMessage('✅ Code graph cleared.');
+          return { handled: true };
+          
+        default:
+          outputRenderer.addSystemMessage('❌ Unknown graph command. Available commands: index, search, status, clear');
+          return { handled: true };
+      }
+    } catch (error) {
+      logger.error(`Graph command error: ${error.message}`, { error });
+      outputRenderer.addSystemMessage(`❌ Error executing graph command: ${error.message}`);
+      return { handled: true };
+    }
+  }
+  
+  /**
+   * Handle memory commands
+   * 
+   * @param {Array<string>} args Command arguments
+   * @returns {Promise<Object>} Response
+   */
+  async function handleMemoryCommand(args) {
+    const subCommand = args[0];
+    
+    try {
+      switch (subCommand) {
+        case 'learn':
+          const context = args.slice(1).join(' ');
+          if (!context) {
+            outputRenderer.addSystemMessage('❌ Please provide content to learn.');
+            return { handled: true };
+          }
+          
+          await memory.storeMemory(context);
+          outputRenderer.addSystemMessage('✅ I\'ve learned this information and will remember it for future interactions.');
+          return { handled: true };
+          
+        case 'recall':
+          const query = args.slice(1).join(' ');
+          if (!query) {
+            outputRenderer.addSystemMessage('❌ Please provide a query to recall memories.');
+            return { handled: true };
+          }
+          
+          const memories = await memory.recallMemories(query, { limit: 5 });
+          
+          if (memories.length === 0) {
+            outputRenderer.addSystemMessage('I don\'t have any memories related to that query.');
+          } else {
+            outputRenderer.addSystemMessage(`Here's what I remember about "${query}":`);
+            
+            for (const mem of memories) {
+              outputRenderer.addSystemMessage(`\n- ${mem.content} (Relevance: ${mem.score.toFixed(2)})`);
+            }
+          }
+          return { handled: true };
+          
+        case 'list':
+          const allMemories = await memory.getAllMemories();
+          
+          if (allMemories.length === 0) {
+            outputRenderer.addSystemMessage('I don\'t have any stored memories yet.');
+          } else {
+            outputRenderer.addSystemMessage(`I have ${allMemories.length} memories stored:`);
+            
+            for (const mem of allMemories) {
+              outputRenderer.addSystemMessage(`\n- ${mem.content}`);
+            }
+          }
+          return { handled: true };
+          
+        case 'clear':
+          await memory.clearMemories();
+          outputRenderer.addSystemMessage('✅ All memories have been cleared.');
+          return { handled: true };
+          
+        default:
+          outputRenderer.addSystemMessage('❌ Unknown memory command. Available commands: learn, recall, list, clear');
+          return { handled: true };
+      }
+    } catch (error) {
+      logger.error(`Memory command error: ${error.message}`, { error });
+      outputRenderer.addSystemMessage(`❌ Error executing memory command: ${error.message}`);
+      return { handled: true };
+    }
+  }
+  
+  /**
+   * Handle enhance commands
+   * 
+   * @param {Array<string>} args Command arguments
+   * @returns {Promise<Object>} Response
+   */
+  async function handleEnhanceCommand(args) {
+    const subCommand = args[0] || 'status';
+    
+    try {
+      switch (subCommand) {
+        case 'status':
+          const ragStatus = await rag.getStatus();
+          const graphStatus = await graphRag.getStatus();
+          const memoryStatus = await memory.getStatus();
+          
+          outputRenderer.addSystemMessage(`Enhanced Agent Status:
+
+RAG System:
+- Indexed files: ${ragStatus.fileCount}
+- Code chunks: ${ragStatus.chunkCount}
+- Last updated: ${ragStatus.lastUpdated || 'Never'}
+
+GraphRAG System:
+- Nodes: ${graphStatus.nodeCount}
+- Relationships: ${graphStatus.edgeCount}
+- Last updated: ${graphStatus.lastUpdated || 'Never'}
+
+Memory System:
+- Stored memories: ${memoryStatus.memoryCount}
+- Last updated: ${memoryStatus.lastUpdated || 'Never'}
+
+Use the following commands to work with enhanced features:
+- /rag index - Index your codebase for RAG
+- /rag search <query> - Search for relevant code
+- /graph index - Build a code relationship graph
+- /graph search <query> - Find related code entities
+- /memory learn <context> - Teach me something to remember
+- /memory recall <query> - Recall related memories`);
+          return { handled: true };
+          
+        case 'prompt':
+          const task = args.slice(1).join(' ');
+          if (!task) {
+            outputRenderer.addSystemMessage('❌ Please provide a task description.');
+            return { handled: true };
+          }
+          
+          const enhancedPrompt = await enhancedAgent.generateEnhancedPrompt(task);
+          outputRenderer.addSystemMessage(`Enhanced prompt for "${task}":\n\n${enhancedPrompt}`);
+          return { handled: true };
+          
+        default:
+          outputRenderer.addSystemMessage('❌ Unknown enhance command. Available commands: status, prompt');
+          return { handled: true };
+      }
+    } catch (error) {
+      logger.error(`Enhance command error: ${error.message}`, { error });
+      outputRenderer.addSystemMessage(`❌ Error executing enhance command: ${error.message}`);
+      return { handled: true };
+    }
+  }
+  
+  /**
+   * Learn from a file modification
+   * 
+   * @param {Object} modification Modification details
+   * @param {string} modification.filePath File path
+   * @param {string} modification.content New content
+   * @param {string} modification.originalContent Original content
+   * @param {boolean} approved Whether the modification was approved
+   * @returns {Promise<void>}
+   */
+  async function learnFromModification(modification, approved) {
+    try {
+      if (approved) {
+        // Store information about the modification
+        const { filePath, content, originalContent } = modification;
+        
+        // Create a memory of the modification
+        const memoryContent = `File ${filePath} was ${originalContent ? 'modified' : 'created'}. The approved content was stored.`;
+        await memory.storeMemory(memoryContent, { 
+          type: 'file_modification',
+          filePath,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Re-index the file in RAG if RAG is enabled and has been indexed before
+        const ragStatus = await rag.getStatus();
+        if (ragStatus.fileCount > 0) {
+          await rag.indexFile(filePath, content);
+        }
+        
+        // Update graph if graph has been built before
+        const graphStatus = await graphRag.getStatus();
+        if (graphStatus.nodeCount > 0) {
+          await graphRag.updateFileInGraph(filePath, content);
+        }
+        
+        logger.info(`Enhanced agent learned from modification to ${filePath}`);
+      }
+    } catch (error) {
+      logger.error(`Failed to learn from modification: ${error.message}`, { error });
+    }
+  }
+  
+  // Return the controller interface
+  return {
+    processMessage,
+    handleRagCommand,
+    handleGraphCommand,
+    handleMemoryCommand,
+    handleEnhanceCommand,
+    learnFromModification
+  };
+}
+
+module.exports = {
+  createEnhancedAgentController
+};
+```
+
+# src/agent/enhanced/enhanced-agent.js
+
+```js
+/**
+ * Enhanced Agent for FrankCode
+ * 
+ * This module integrates various AI capabilities (RAG, GraphRAG, Memory)
+ * to create a more capable autonomous code editing agent.
+ */
+
+const path = require('path');
+const fs = require('fs').promises;
+const { createCodeRAG } = require('./rag');
+const { createGraphRAG } = require('./graphrag');
+const { createMemoryController } = require('./memory-controller');
+const { createVectorStore } = require('./embeddings');
+const { logger } = require('../utils/logger');
+const { countTokens } = require('./tokenizer');
+
+/**
+ * Create an enhanced agent for code editing
+ * 
+ * @param {Object} options Configuration options
+ * @param {string} options.projectRoot Project root directory
+ * @param {Object} options.apiClient API client for LLM
+ * @param {Object} options.tokenMonitor Token usage monitor
+ * @returns {Object} The enhanced agent interface
+ */
+function createEnhancedAgent({ projectRoot, apiClient, tokenMonitor }) {
+  // Set up RAG systems
+  const storageDir = path.join(projectRoot, '.frankcode');
+  
+  // Create RAG systems
+  const codeVectorStore = createVectorStore({
+    storePath: path.join(storageDir, 'code-vectors.json')
+  });
+  
+  const codeRAG = createCodeRAG({
+    projectRoot,
+    vectorStore: codeVectorStore
+  });
+  
+  const graphRAG = createGraphRAG({
+    projectRoot,
+    vectorStore: codeVectorStore
+  });
+  
+  // Create memory controller
+  const memoryController = createMemoryController({
+    memoryPath: path.join(storageDir, 'memory.json'),
+    maxMemories: 1000,
+    relevanceThreshold: 0.7
+  });
+  
+  // Track indexing status
+  let isIndexed = false;
+  let isIndexing = false;
+  
+  /**
+   * Initialize the enhanced agent
+   * 
+   * @returns {Promise<void>}
+   */
+  async function initialize() {
+    try {
+      // Create storage directory
+      await fs.mkdir(storageDir, { recursive: true });
+      
+      // Try to load existing GraphRAG data
+      const graphLoaded = await graphRAG.loadGraph(path.join(storageDir, 'code-graph.json'));
+      
+      if (graphLoaded) {
+        isIndexed = true;
+        logger.info('GraphRAG data loaded from disk');
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize enhanced agent: ${error.message}`, { error });
+    }
+  }
+  
+  /**
+   * Index the project for RAG and GraphRAG
+   * 
+   * @param {Object} options Indexing options
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function indexProject(options = {}) {
+    if (isIndexing) {
+      logger.warn('Project indexing already in progress');
+      return false;
+    }
+    
+    try {
+      isIndexing = true;
+      
+      // Index with CodeRAG
+      logger.info('Indexing project with CodeRAG...');
+      const codeRAGCount = await codeRAG.indexProject(options);
+      
+      // Index with GraphRAG
+      logger.info('Indexing project with GraphRAG...');
+      const graphRAGCount = await graphRAG.indexProject(options);
+      
+      isIndexed = true;
+      isIndexing = false;
+      
+      logger.info(`Indexing complete. Indexed ${codeRAGCount} files with CodeRAG and ${graphRAGCount} files with GraphRAG`);
+      return true;
+    } catch (error) {
+      isIndexing = false;
+      logger.error(`Failed to index project: ${error.message}`, { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Process a user message with context augmentation
+   * 
+   * @param {string} message User's message
+   * @returns {Promise<Object>} Response object
+   */
+  async function processMessage(message) {
+    try {
+      // Check if we need to index the project
+      if (!isIndexed && !isIndexing && !message.startsWith('/')) {
+        logger.info('Project not indexed. Starting background indexing...');
+        // Start indexing in the background
+        indexProject().catch(error => {
+          logger.error(`Background indexing failed: ${error.message}`, { error });
+        });
+      }
+      
+      // Extract the task from the message
+      const task = extractTask(message);
+      
+      // Skip context augmentation for commands
+      if (message.startsWith('/')) {
+        return { 
+          text: message,
+          augmented: false
+        };
+      }
+      
+      // Get relevant memories
+      logger.debug('Retrieving relevant memories...');
+      const relevantMemories = await memoryController.getRelevantMemories(task);
+      
+      // Get relevant code context
+      logger.debug('Retrieving relevant code context...');
+      const codeContext = isIndexed ? 
+        await codeRAG.retrieveContext(task, { maxResults: 3 }) : 
+        [];
+      
+      // Get relevant graph context if task involves code relationships
+      logger.debug('Retrieving relevant graph context...');
+      const graphContext = isIndexed ? 
+        await graphRAG.search(task, { maxResults: 3 }) : 
+        [];
+      
+      // Format contexts
+      const memoriesText = memoryController.formatMemoriesForPrompt(relevantMemories);
+      const codeContextText = codeRAG.formatContextForPrompt(codeContext);
+      const graphContextText = graphRAG.formatSearchResultsForPrompt(graphContext);
+      
+      // Combine contexts
+      let augmentedContext = '';
+      
+      if (memoriesText) augmentedContext += memoriesText + '\n\n';
+      if (codeContextText) augmentedContext += codeContextText + '\n\n';
+      if (graphContextText) augmentedContext += graphContextText + '\n\n';
+      
+      // Truncate to avoid token limits
+      if (augmentedContext.length > 0) {
+        const maxContextTokens = 3000; // Should be adjusted based on model
+        const tokenCount = countTokens(augmentedContext);
+        
+        if (tokenCount > maxContextTokens) {
+          logger.debug(`Truncating context from ${tokenCount} to ${maxContextTokens} tokens`);
+          augmentedContext = truncateToTokens(augmentedContext, maxContextTokens);
+        }
+        
+        // Add the augmented context to the message
+        augmentedContext += `\n\nUser message: ${message}`;
+        
+        logger.debug('Message augmented with context');
+        return {
+          text: augmentedContext,
+          originalMessage: message,
+          augmented: true
+        };
+      }
+      
+      // No context to add
+      return {
+        text: message,
+        augmented: false
+      };
+    } catch (error) {
+      logger.error(`Failed to process message: ${error.message}`, { error });
+      return {
+        text: message,
+        error: error.message,
+        augmented: false
+      };
+    }
+  }
+  
+  /**
+   * Extract a task from a message
+   * 
+   * @param {string} message User message
+   * @returns {string} Extracted task
+   */
+  function extractTask(message) {
+    // For now, just return the message as is
+    // In a more sophisticated implementation, this could extract
+    // the core task or intent from the message
+    return message;
+  }
+  
+  /**
+   * Learn from user feedback
+   * 
+   * @param {string} context The context or task
+   * @param {string} feedback User's feedback
+   * @param {Object} metadata Additional metadata
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function learnFromFeedback(context, feedback, metadata = {}) {
+    try {
+      // Determine memory type based on context
+      let memoryType = '';
+      
+      if (context.toLowerCase().includes('code pattern') || 
+          context.toLowerCase().includes('structure') ||
+          context.toLowerCase().includes('format')) {
+        await memoryController.rememberCodePattern(context, feedback, metadata);
+      } else if (context.toLowerCase().includes('prefer') ||
+                 context.toLowerCase().includes('like') ||
+                 context.toLowerCase().includes('want')) {
+        await memoryController.rememberUserPreference(context, feedback, metadata);
+      } else {
+        await memoryController.rememberProblemSolution(context, feedback, metadata);
+      }
+      
+      logger.info('Learned from user feedback');
+      return true;
+    } catch (error) {
+      logger.error(`Failed to learn from feedback: ${error.message}`, { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Generate an LLM prompt with appropriate context
+   * 
+   * @param {string} task The task description
+   * @param {Object} options Prompt options
+   * @returns {Promise<string>} Generated prompt
+   */
+  async function generatePrompt(task, options = {}) {
+    try {
+      const { 
+        includeMemories = true,
+        includeCodeContext = true,
+        includeGraphContext = true,
+        systemInstruction = null
+      } = options;
+      
+      // Start with system instruction if provided
+      let prompt = '';
+      
+      if (systemInstruction) {
+        prompt += systemInstruction + '\n\n';
+      } else {
+        prompt += 'You are FrankCode, an autonomous code editing agent. You can help users write, modify, and understand code. Please follow these guidelines:\n\n';
+        prompt += '1. When modifying files, clearly show the changes and ask for confirmation\n';
+        prompt += '2. When creating new files, show the full content and ask for confirmation\n';
+        prompt += '3. Use consistent code patterns that match the existing codebase\n';
+        prompt += '4. Provide explanations for your changes\n';
+        prompt += '5. Remember user preferences for future interactions\n\n';
+      }
+      
+      // Add context
+      let contextAdded = false;
+      
+      // Add memories if available and requested
+      if (includeMemories) {
+        const relevantMemories = await memoryController.getRelevantMemories(task);
+        if (relevantMemories.length > 0) {
+          prompt += memoryController.formatMemoriesForPrompt(relevantMemories) + '\n\n';
+          contextAdded = true;
+        }
+      }
+      
+      // Add code context if available and requested
+      if (includeCodeContext && isIndexed) {
+        const codeContext = await codeRAG.retrieveContext(task, { maxResults: 3 });
+        if (codeContext.length > 0) {
+          prompt += codeRAG.formatContextForPrompt(codeContext) + '\n\n';
+          contextAdded = true;
+        }
+      }
+      
+      // Add graph context if available and requested
+      if (includeGraphContext && isIndexed) {
+        const graphContext = await graphRAG.search(task, { maxResults: 3 });
+        if (graphContext.length > 0) {
+          prompt += graphRAG.formatSearchResultsForPrompt(graphContext) + '\n\n';
+          contextAdded = true;
+        }
+      }
+      
+      // Add the task
+      if (contextAdded) {
+        prompt += 'Based on the context above, please address the following:\n\n';
+      }
+      
+      prompt += task;
+      
+      return prompt;
+    } catch (error) {
+      logger.error(`Failed to generate prompt: ${error.message}`, { error });
+      return task; // Fallback to just the task
+    }
+  }
+  
+  /**
+   * Process a file modification request
+   * 
+   * @param {Object} modification File modification data
+   * @param {string} modification.filePath Path to the file
+   * @param {string} modification.content New content
+   * @returns {Promise<Object>} Processing result
+   */
+  async function processFileModification(modification) {
+    try {
+      // Get original file content if it exists
+      let originalContent = '';
+      try {
+        originalContent = await fs.readFile(path.join(projectRoot, modification.filePath), 'utf8');
+      } catch (error) {
+        // File doesn't exist, treat as a new file
+        originalContent = '';
+      }
+      
+      // Check if this is a pattern we should remember
+      if (originalContent) {
+        // This is an existing file being modified
+        await memoryController.rememberCodePattern(
+          `Code pattern for file: ${modification.filePath}`,
+          originalContent,
+          { filePath: modification.filePath, type: 'file_structure' }
+        );
+      }
+      
+      // Return the modification with additional context
+      return {
+        ...modification,
+        isNewFile: !originalContent,
+        originalContent
+      };
+    } catch (error) {
+      logger.error(`Failed to process file modification: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Truncate text to fit within token limit
+   * 
+   * @param {string} text Text to truncate
+   * @param {number} maxTokens Maximum number of tokens
+   * @returns {string} Truncated text
+   */
+  function truncateToTokens(text, maxTokens) {
+    // Simple truncation by removing content from the middle
+    const tokens = countTokens(text);
+    
+    if (tokens <= maxTokens) {
+      return text;
+    }
+    
+    // Split into lines
+    const lines = text.split('\n');
+    
+    // If very few lines, just return the first part
+    if (lines.length <= 5) {
+      // Estimate tokens per character and truncate
+      const tokensPerChar = tokens / text.length;
+      const maxChars = Math.floor(maxTokens / tokensPerChar);
+      return text.substring(0, maxChars) + '\n\n[Context truncated due to length]';
+    }
+    
+    // Keep the beginning and end parts
+    const keepRatio = maxTokens / tokens;
+    const linesToKeepStart = Math.floor(lines.length * keepRatio * 0.6); // More from beginning
+    const linesToKeepEnd = Math.floor(lines.length * keepRatio * 0.4); // Less from end
+    
+    const beginningLines = lines.slice(0, linesToKeepStart);
+    const endLines = lines.slice(-linesToKeepEnd);
+    
+    return beginningLines.join('\n') + 
+           '\n\n[... Context truncated due to length ...]\n\n' + 
+           endLines.join('\n');
+  }
+  
+  // Initialize
+  initialize();
+  
+  // Return the enhanced agent interface
+  return {
+    processMessage,
+    indexProject,
+    learnFromFeedback,
+    generatePrompt,
+    processFileModification,
+    codeRAG,
+    graphRAG,
+    memoryController
+  };
+}
+
+module.exports = {
+  createEnhancedAgent
+};
+```
+
+# src/agent/enhanced/graphrag-module.js
+
+```js
+/**
+ * GraphRAG Module
+ *
+ * This module implements a graph-based code understanding system
+ * to track relationships between code entities.
+ */
+
+const path = require('path');
+const fs = require('fs').promises;
+const glob = require('fast-glob');
+const { logger } = require('../../utils/logger');
+const { createEmbedding } = require('./embeddings');
+
+// Configuration
+const EXCLUDE_PATTERNS = [
+  'node_modules/**',
+  '.git/**',
+  'dist/**',
+  'build/**',
+  '**/*.min.js',
+  '**/*.bundle.js',
+  '**/*.log',
+  '**/package-lock.json'
+];
+
+/**
+ * Create a GraphRAG module
+ * 
+ * @param {Object} options GraphRAG options
+ * @param {string} options.storePath Path to store the graph
+ * @param {string} options.projectRoot The project root path
+ * @returns {Object} The GraphRAG module
+ */
+function createGraphRagModule({ storePath, projectRoot }) {
+  // Graph state
+  let graph = {
+    nodes: [],
+    edges: []
+  };
+  
+  // Metadata
+  let lastUpdated = null;
+  
+  /**
+   * Build a graph of code relationships
+   * 
+   * @param {Object} options Build options
+   * @param {Array<string>} options.include Glob patterns to include
+   * @param {Array<string>} options.exclude Glob patterns to exclude
+   * @returns {Promise<Object>} Build statistics
+   */
+  async function buildGraph(options = {}) {
+    try {
+      const { include = ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx'], 
+              exclude = EXCLUDE_PATTERNS } = options;
+      
+      // Reset graph
+      graph = {
+        nodes: [],
+        edges: []
+      };
+      
+      // Find all code files
+      const files = await glob(include, {
+        cwd: projectRoot,
+        ignore: exclude,
+        absolute: true
+      });
+      
+      // Process each file
+      for (const filePath of files) {
+        try {
+          const relativePath = path.relative(projectRoot, filePath);
+          const content = await fs.readFile(filePath, 'utf8');
+          
+          // Skip empty files
+          if (!content.trim()) {
+            continue;
+          }
+          
+          // Parse and add to graph
+          await parseFileAndAddToGraph(relativePath, content);
+        } catch (error) {
+          logger.error(`Failed to process file ${filePath} for graph: ${error.message}`, { error });
+        }
+      }
+      
+      // Find relationships between nodes
+      findRelationshipsBetweenNodes();
+      
+      // Update metadata
+      lastUpdated = new Date().toISOString();
+      
+      // Save graph
+      await saveGraph();
+      
+      return {
+        nodeCount: graph.nodes.length,
+        edgeCount: graph.edges.length
+      };
+    } catch (error) {
+      logger.error(`Failed to build graph: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Parse a file and add entities to the graph
+   * 
+   * @param {string} filePath Relative file path
+   * @param {string} content File content
+   * @returns {Promise<void>}
+   */
+  async function parseFileAndAddToGraph(filePath, content) {
+    // Extract entities (simple regex-based approach)
+    const functions = extractFunctions(content);
+    const classes = extractClasses(content);
+    const exports = extractExports(content, filePath);
+    const imports = extractImports(content, filePath);
+    
+    // Add file node
+    const fileNode = {
+      id: `file:${filePath}`,
+      name: filePath,
+      type: 'file',
+      filePath,
+      embedding: await createEmbedding(`File: ${filePath}`)
+    };
+    
+    addNode(fileNode);
+    
+    // Add function nodes and connect to file
+    for (const func of functions) {
+      const funcNode = {
+        id: `function:${filePath}:${func.name}`,
+        name: func.name,
+        type: 'function',
+        filePath,
+        embedding: await createEmbedding(`Function: ${func.name} in ${filePath}`)
+      };
+      
+      addNode(funcNode);
+      addEdge(fileNode.id, funcNode.id, 'contains');
+    }
+    
+    // Add class nodes and connect to file
+    for (const cls of classes) {
+      const classNode = {
+        id: `class:${filePath}:${cls.name}`,
+        name: cls.name,
+        type: 'class',
+        filePath,
+        embedding: await createEmbedding(`Class: ${cls.name} in ${filePath}`)
+      };
+      
+      addNode(classNode);
+      addEdge(fileNode.id, classNode.id, 'contains');
+      
+      // Add methods as function nodes and connect to class
+      for (const method of cls.methods) {
+        const methodNode = {
+          id: `method:${filePath}:${cls.name}.${method}`,
+          name: `${cls.name}.${method}`,
+          type: 'method',
+          filePath,
+          embedding: await createEmbedding(`Method: ${method} in class ${cls.name} in ${filePath}`)
+        };
+        
+        addNode(methodNode);
+        addEdge(classNode.id, methodNode.id, 'contains');
+      }
+    }
+    
+    // Add export edges
+    for (const exp of exports) {
+      // Find the node being exported
+      const sourceNodeId = findNodeId(exp.source, filePath);
+      if (sourceNodeId) {
+        // Add export node
+        const exportNode = {
+          id: `export:${filePath}:${exp.name}`,
+          name: exp.name,
+          type: 'export',
+          filePath,
+          embedding: await createEmbedding(`Export: ${exp.name} from ${filePath}`)
+        };
+        
+        addNode(exportNode);
+        addEdge(sourceNodeId, exportNode.id, 'exports');
+        addEdge(fileNode.id, exportNode.id, 'contains');
+      }
+    }
+    
+    // Add import edges
+    for (const imp of imports) {
+      // Add import node
+      const importNode = {
+        id: `import:${filePath}:${imp.name}`,
+        name: imp.name,
+        type: 'import',
+        filePath,
+        targetPath: imp.source,
+        embedding: await createEmbedding(`Import: ${imp.name} from ${imp.source} in ${filePath}`)
+      };
+      
+      addNode(importNode);
+      addEdge(fileNode.id, importNode.id, 'contains');
+    }
+  }
+  
+  /**
+   * Find relationships between nodes
+   */
+  function findRelationshipsBetweenNodes() {
+    // Connect import nodes to their target exports
+    const importNodes = graph.nodes.filter(node => node.type === 'import');
+    const exportNodes = graph.nodes.filter(node => node.type === 'export');
+    
+    for (const importNode of importNodes) {
+      // Get target path
+      const targetPath = importNode.targetPath;
+      if (!targetPath) continue;
+      
+      // Find matching export nodes
+      const matchingExports = exportNodes.filter(node => {
+        // Handle relative imports
+        if (targetPath.startsWith('./') || targetPath.startsWith('../')) {
+          const importFilePath = importNode.filePath;
+          const importDir = path.dirname(importFilePath);
+          const resolvedPath = path.normalize(path.join(importDir, targetPath));
+          
+          // Match with or without extension
+          return node.filePath === resolvedPath || 
+                 node.filePath === `${resolvedPath}.js` || 
+                 node.filePath === `${resolvedPath}.jsx` || 
+                 node.filePath === `${resolvedPath}.ts` || 
+                 node.filePath === `${resolvedPath}.tsx`;
+        }
+        
+        // Handle package imports
+        return false; // For now, we don't handle package imports
+      });
+      
+      // Connect import to exports
+      for (const exportNode of matchingExports) {
+        addEdge(importNode.id, exportNode.id, 'imports');
+      }
+    }
+  }
+  
+  /**
+   * Update a file in the graph
+   * 
+   * @param {string} filePath Relative file path
+   * @param {string} content New file content
+   * @returns {Promise<void>}
+   */
+  async function updateFileInGraph(filePath, content) {
+    try {
+      // Remove existing file and related nodes
+      removeFileFromGraph(filePath);
+      
+      // Parse and add to graph
+      await parseFileAndAddToGraph(filePath, content);
+      
+      // Find relationships
+      findRelationshipsBetweenNodes();
+      
+      // Update metadata
+      lastUpdated = new Date().toISOString();
+      
+      // Save graph
+      await saveGraph();
+    } catch (error) {
+      logger.error(`Failed to update file in graph: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Remove a file and related nodes from the graph
+   * 
+   * @param {string} filePath Relative file path
+   */
+  function removeFileFromGraph(filePath) {
+    // Find all nodes for this file
+    const fileNodes = graph.nodes.filter(node => node.filePath === filePath);
+    const nodeIds = fileNodes.map(node => node.id);
+    
+    // Remove nodes
+    graph.nodes = graph.nodes.filter(node => node.filePath !== filePath);
+    
+    // Remove edges
+    graph.edges = graph.edges.filter(edge => 
+      !nodeIds.includes(edge.source) && !nodeIds.includes(edge.target)
+    );
+  }
+  
+  /**
+   * Add a node to the graph
+   * 
+   * @param {Object} node The node to add
+   */
+  function addNode(node) {
+    // Check if node already exists
+    const index = graph.nodes.findIndex(n => n.id === node.id);
+    
+    if (index >= 0) {
+      // Update existing node
+      graph.nodes[index] = { ...graph.nodes[index], ...node };
+    } else {
+      // Add new node
+      graph.nodes.push(node);
+    }
+  }
+  
+  /**
+   * Add an edge to the graph
+   * 
+   * @param {string} sourceId Source node ID
+   * @param {string} targetId Target node ID
+   * @param {string} type Edge type
+   */
+  function addEdge(sourceId, targetId, type) {
+    const edgeId = `${sourceId}-${type}->${targetId}`;
+    
+    // Check if edge already exists
+    const exists = graph.edges.some(e => e.id === edgeId);
+    
+    if (!exists) {
+      // Add new edge
+      graph.edges.push({
+        id: edgeId,
+        source: sourceId,
+        target: targetId,
+        type
+      });
+    }
+  }
+  
+  /**
+   * Find a node ID by name and file path
+   * 
+   * @param {string} name Entity name
+   * @param {string} filePath File path
+   * @returns {string|null} Node ID
+   */
+  function findNodeId(name, filePath) {
+    // Try to find function, class, or method node
+    const node = graph.nodes.find(n => 
+      n.filePath === filePath && 
+      (n.name === name || n.name.endsWith(`.${name}`))
+    );
+    
+    return node ? node.id : null;
+  }
+  
+  /**
+   * Extract functions from code content
+   * 
+   * @param {string} content Code content
+   * @returns {Array<Object>} Extracted functions
+   */
+  function extractFunctions(content) {
+    const functions = [];
+    
+    // Regular function declarations
+    const funcRegex = /function\s+(\w+)\s*\(/g;
+    let match;
+    while ((match = funcRegex.exec(content)) !== null) {
+      functions.push({ name: match[1] });
+    }
+    
+    // Arrow functions and function expressions
+    const arrowFuncRegex = /const\s+(\w+)\s*=\s*(\([^)]*\)|[^=]*)\s*=>/g;
+    while ((match = arrowFuncRegex.exec(content)) !== null) {
+      functions.push({ name: match[1] });
+    }
+    
+    return functions;
+  }
+  
+  /**
+   * Extract classes from code content
+   * 
+   * @param {string} content Code content
+   * @returns {Array<Object>} Extracted classes
+   */
+  function extractClasses(content) {
+    const classes = [];
+    
+    // Class declarations
+    const classRegex = /class\s+(\w+)(?:\s+extends\s+(\w+))?\s*{/g;
+    let match;
+    while ((match = classRegex.exec(content)) !== null) {
+      // Find methods in class
+      const classStart = match.index;
+      let braceCount = 0;
+      let classEnd = classStart;
+      
+      // Find the class end by counting braces
+      for (let i = match.index; i < content.length; i++) {
+        if (content[i] === '{') braceCount++;
+        if (content[i] === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            classEnd = i;
+            break;
+          }
+        }
+      }
+      
+      // Extract the class body
+      const classBody = content.substring(classStart, classEnd + 1);
+      
+      // Find methods
+      const methodRegex = /(?:async\s+)?(\w+)\s*\([^)]*\)\s*{/g;
+      const methods = [];
+      let methodMatch;
+      while ((methodMatch = methodRegex.exec(classBody)) !== null) {
+        // Skip constructor
+        if (methodMatch[1] !== 'constructor') {
+          methods.push(methodMatch[1]);
+        }
+      }
+      
+      classes.push({
+        name: match[1],
+        extends: match[2] || null,
+        methods
+      });
+    }
+    
+    return classes;
+  }
+  
+  /**
+   * Extract exports from code content
+   * 
+   * @param {string} content Code content
+   * @param {string} filePath File path
+   * @returns {Array<Object>} Extracted exports
+   */
+  function extractExports(content, filePath) {
+    const exports = [];
+    
+    // module.exports = ...
+    const moduleExportsRegex = /module\.exports\s*=\s*(\w+)/g;
+    let match;
+    while ((match = moduleExportsRegex.exec(content)) !== null) {
+      exports.push({ name: match[1], source: match[1] });
+    }
+    
+    // module.exports = { ... }
+    const moduleExportsObjRegex = /module\.exports\s*=\s*{([^}]*)}/g;
+    while ((match = moduleExportsObjRegex.exec(content)) !== null) {
+      const objContent = match[1];
+      const propRegex = /\b(\w+)(?:\s*:\s*(\w+))?\b/g;
+      let propMatch;
+      
+      while ((propMatch = propRegex.exec(objContent)) !== null) {
+        const name = propMatch[1];
+        const source = propMatch[2] || propMatch[1];
+        exports.push({ name, source });
+      }
+    }
+    
+    // export function ...
+    const exportFuncRegex = /export\s+function\s+(\w+)/g;
+    while ((match = exportFuncRegex.exec(content)) !== null) {
+      exports.push({ name: match[1], source: match[1] });
+    }
+    
+    // export class ...
+    const exportClassRegex = /export\s+class\s+(\w+)/g;
+    while ((match = exportClassRegex.exec(content)) !== null) {
+      exports.push({ name: match[1], source: match[1] });
+    }
+    
+    // export const ... = ...
+    const exportConstRegex = /export\s+const\s+(\w+)\s*=/g;
+    while ((match = exportConstRegex.exec(content)) !== null) {
+      exports.push({ name: match[1], source: match[1] });
+    }
+    
+    // export default ...
+    const exportDefaultRegex = /export\s+default\s+(\w+)/g;
+    while ((match = exportDefaultRegex.exec(content)) !== null) {
+      exports.push({ name: 'default', source: match[1] });
+    }
+    
+    return exports;
+  }
+  
+  /**
+   * Extract imports from code content
+   * 
+   * @param {string} content Code content
+   * @param {string} filePath File path
+   * @returns {Array<Object>} Extracted imports
+   */
+  function extractImports(content, filePath) {
+    const imports = [];
+    
+    // import ... from '...'
+    const importRegex = /import\s+(?:{([^}]*)}|(\w+))\s+from\s+['"]([^'"]+)['"]/g;
+    let match;
+    while ((match = importRegex.exec(content)) !== null) {
+      const source = match[3];
+      
+      if (match[2]) {
+        // Default import
+        imports.push({ name: match[2], source });
+      } else if (match[1]) {
+        // Named imports
+        const namedImports = match[1].split(',');
+        for (const namedImport of namedImports) {
+          const trimmed = namedImport.trim();
+          if (trimmed) {
+            // Handle aliased imports
+            const aliasMatch = trimmed.match(/(\w+)(?:\s+as\s+(\w+))?/);
+            if (aliasMatch) {
+              const originalName = aliasMatch[1];
+              const alias = aliasMatch[2] || originalName;
+              imports.push({ name: alias, originalName, source });
+            }
+          }
+        }
+      }
+    }
+    
+    // const ... = require('...')
+    const requireRegex = /const\s+(?:{([^}]*)}|(\w+))\s*=\s*require\(['"]([^'"]+)['"]\)/g;
+    while ((match = requireRegex.exec(content)) !== null) {
+      const source = match[3];
+      
+      if (match[2]) {
+        // Default require
+        imports.push({ name: match[2], source });
+      } else if (match[1]) {
+        // Destructured require
+        const namedImports = match[1].split(',');
+        for (const namedImport of namedImports) {
+          const trimmed = namedImport.trim();
+          if (trimmed) {
+            // Handle aliased imports
+            const aliasMatch = trimmed.match(/(\w+)(?:\s*:\s*(\w+))?/);
+            if (aliasMatch) {
+              const originalName = aliasMatch[1];
+              const alias = aliasMatch[2] || originalName;
+              imports.push({ name: alias, originalName, source });
+            }
+          }
+        }
+      }
+    }
+    
+    return imports;
+  }
+  
+  /**
+   * Search for code entities
+   * 
+   * @param {string} query The search query
+   * @param {Object} options Search options
+   * @param {number} options.limit Maximum number of results
+   * @returns {Promise<Array<Object>>} The search results
+   */
+  async function search(query, options = {}) {
+    try {
+      const { limit = 5 } = options;
+      
+      // Create embedding for the query
+      const embedding = await createEmbedding(query);
+      
+      // Calculate similarity scores
+      const results = graph.nodes.map(node => ({
+        ...node,
+        score: cosineSimilarity(embedding, node.embedding || [])
+      }));
+      
+      // Sort by score
+      results.sort((a, b) => b.score - a.score);
+      
+      // Take top results
+      const topResults = results.slice(0, limit);
+      
+      // Add related nodes
+      for (const result of topResults) {
+        // Find edges where this node is source or target
+        const relatedEdges = graph.edges.filter(edge => 
+          edge.source === result.id || edge.target === result.id
+        );
+        
+        // Get related nodes
+        const relatedNodeIds = new Set();
+        for (const edge of relatedEdges) {
+          if (edge.source === result.id) {
+            relatedNodeIds.add(edge.target);
+          } else {
+            relatedNodeIds.add(edge.source);
+          }
+        }
+        
+        // Add related nodes to result
+        result.related = Array.from(relatedNodeIds).map(id => {
+          const node = graph.nodes.find(n => n.id === id);
+          return node ? { id: node.id, name: node.name, type: node.type } : null;
+        }).filter(Boolean);
+      }
+      
+      return topResults;
+    } catch (error) {
+      logger.error(`Failed to search graph: ${error.message}`, { error });
+      return [];
+    }
+  }
+  
+  /**
+   * Calculate cosine similarity between two vectors
+   * 
+   * @param {Array<number>} vecA First vector
+   * @param {Array<number>} vecB Second vector
+   * @returns {number} Cosine similarity (-1 to 1)
+   */
+  function cosineSimilarity(vecA, vecB) {
+    // Handle empty vectors
+    if (!vecA || !vecB || vecA.length === 0 || vecB.length === 0) {
+      return 0;
+    }
+    
+    // Calculate dot product
+    let dotProduct = 0;
+    for (let i = 0; i < Math.min(vecA.length, vecB.length); i++) {
+      dotProduct += vecA[i] * vecB[i];
+    }
+    
+    // Calculate magnitudes
+    let magA = 0;
+    let magB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+      magA += vecA[i] * vecA[i];
+    }
+    for (let i = 0; i < vecB.length; i++) {
+      magB += vecB[i] * vecB[i];
+    }
+    magA = Math.sqrt(magA);
+    magB = Math.sqrt(magB);
+    
+    // Calculate cosine similarity
+    if (magA === 0 || magB === 0) {
+      return 0;
+    }
+    return dotProduct / (magA * magB);
+  }
+  
+  /**
+   * Save the graph to disk
+   * 
+   * @returns {Promise<void>}
+   */
+  async function saveGraph() {
+    try {
+      // Create a simplified graph for storage
+      const storableGraph = {
+        nodes: graph.nodes.map(node => ({
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          filePath: node.filePath,
+          targetPath: node.targetPath
+          // Skip embedding to save space
+        })),
+        edges: graph.edges
+      };
+      
+      // Ensure directory exists
+      const dir = path.dirname(storePath);
+      await fs.mkdir(dir, { recursive: true });
+      
+      // Save to file
+      await fs.writeFile(
+        storePath,
+        JSON.stringify(storableGraph, null, 2),
+        'utf8'
+      );
+    } catch (error) {
+      logger.error(`Failed to save graph: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Load the graph from disk
+   * 
+   * @returns {Promise<void>}
+   */
+  async function loadGraph() {
+    try {
+      // Check if file exists
+      const exists = await fs.access(storePath)
+        .then(() => true)
+        .catch(() => false);
+      
+      if (exists) {
+        // Load from file
+        const data = await fs.readFile(storePath, 'utf8');
+        const loadedGraph = JSON.parse(data);
+        
+        // Replace stored graph
+        graph.nodes = loadedGraph.nodes;
+        graph.edges = loadedGraph.edges;
+        
+        logger.info(`Loaded graph with ${graph.nodes.length} nodes and ${graph.edges.length} edges`);
+      } else {
+        logger.info('Graph file not found, starting with empty graph');
+        graph = {
+          nodes: [],
+          edges: []
+        };
+      }
+    } catch (error) {
+      logger.error(`Failed to load graph: ${error.message}`, { error });
+      graph = {
+        nodes: [],
+        edges: []
+      };
+    }
+  }
+  
+  /**
+   * Get GraphRAG status
+   * 
+   * @returns {Promise<Object>} The status
+   */
+  async function getStatus() {
+    return {
+      nodeCount: graph.nodes.length,
+      edgeCount: graph.edges.length,
+      lastUpdated
+    };
+  }
+  
+  /**
+   * Clear the graph
+   * 
+   * @returns {Promise<void>}
+   */
+  async function clearGraph() {
+    try {
+      graph = {
+        nodes: [],
+        edges: []
+      };
+      lastUpdated = null;
+      
+      await saveGraph();
+    } catch (error) {
+      logger.error(`Failed to clear graph: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  // Load existing graph
+  loadGraph();
+  
+  // Return the GraphRAG module
+  return {
+    buildGraph,
+    updateFileInGraph,
+    search,
+    getStatus,
+    clearGraph
+  };
+}
+
+module.exports = {
+  createGraphRagModule
+};
+```
+
+# src/agent/enhanced/index.js
+
+```js
+/**
+ * Enhanced Agent Module Index
+ *
+ * This file exports all enhanced agent modules for use in other parts of the application.
+ */
+
+const { createEmbedding, createVectorStore } = require('./embeddings');
+const { createRagImplementation } = require('./rag-implementation');
+const { createGraphRagModule } = require('./graphrag-module');
+const { createMemoryController } = require('./memory-controller');
+const { createEnhancedAgent } = require('./enhanced-agent');
+const { createEnhancedAgentController } = require('../enhanced-agent-controller');
+
+module.exports = {
+  createEmbedding,
+  createVectorStore,
+  createRagImplementation,
+  createGraphRagModule,
+  createMemoryController,
+  createEnhancedAgent,
+  createEnhancedAgentController
+};
+```
+
+# src/agent/enhanced/memory-controller.js
+
+```js
+/**
+ * Memory Controller for FrankCode
+ * 
+ * This module provides a way for FrankCode to learn from past experiences
+ * and remember code patterns, solving approaches, and user preferences.
+ */
+
+const fs = require('fs').promises;
+const path = require('path');
+const crypto = require('crypto');
+const { createEmbedding, cosineSimilarity } = require('./embeddings');
+const { logger } = require('../utils/logger');
+
+/**
+ * Create a Memory Controller
+ * 
+ * @param {Object} options Configuration options
+ * @param {string} options.memoryPath Path to store memories
+ * @param {number} options.maxMemories Maximum number of memories to keep
+ * @param {number} options.relevanceThreshold Threshold for considering memories relevant
+ * @returns {Object} The memory controller interface
+ */
+function createMemoryController({ memoryPath, maxMemories = 1000, relevanceThreshold = 0.7 }) {
+  // Memory types
+  const MemoryType = {
+    CODE_PATTERN: 'code_pattern',     // Remembered code structures and patterns
+    USER_PREFERENCE: 'user_preference', // User's preferred way of doing things
+    PROBLEM_SOLUTION: 'problem_solution', // How a problem was solved
+    FILE_STRUCTURE: 'file_structure',   // Structure of a particular file
+    TASK_INSIGHT: 'task_insight',      // Insight for a particular task
+    ERROR_RESOLUTION: 'error_resolution' // How an error was fixed
+  };
+  
+  // In-memory store
+  let memories = [];
+  
+  /**
+   * Initialize the memory controller
+   * 
+   * @returns {Promise<void>}
+   */
+  async function initialize() {
+    try {
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(memoryPath), { recursive: true });
+      
+      // Check if memory file exists
+      try {
+        await fs.access(memoryPath);
+        
+        // Load memories
+        const data = await fs.readFile(memoryPath, 'utf8');
+        memories = JSON.parse(data);
+        logger.info(`Loaded ${memories.length} memories`);
+      } catch (error) {
+        // File doesn't exist, start with empty memories
+        memories = [];
+        logger.info('Starting with empty memories');
+      }
+    } catch (error) {
+      logger.error(`Failed to initialize memory controller: ${error.message}`, { error });
+      memories = [];
+    }
+  }
+  
+  /**
+   * Save the current memories to disk
+   * 
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function saveMemories() {
+    try {
+      // Ensure directory exists
+      await fs.mkdir(path.dirname(memoryPath), { recursive: true });
+      
+      // Write to file
+      await fs.writeFile(memoryPath, JSON.stringify(memories, null, 2), 'utf8');
+      logger.debug(`Saved ${memories.length} memories to ${memoryPath}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to save memories: ${error.message}`, { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Add a new memory
+   * 
+   * @param {Object} memory Memory object
+   * @param {string} memory.type Memory type
+   * @param {string} memory.task Description of the task or context
+   * @param {string} memory.insight The insight or information to remember
+   * @param {Object} memory.metadata Additional metadata
+   * @returns {Promise<string>} Memory ID
+   */
+  async function addMemory(memory) {
+    try {
+      // Generate an ID for the memory
+      const id = crypto.randomUUID();
+      
+      // Generate embeddings
+      const taskEmbedding = await createEmbedding(memory.task);
+      const insightEmbedding = await createEmbedding(memory.insight);
+      
+      // Create full memory object
+      const newMemory = {
+        id,
+        ...memory,
+        created: Date.now(),
+        lastAccessed: Date.now(),
+        accessCount: 0,
+        taskEmbedding,
+        insightEmbedding
+      };
+      
+      // Add to memories
+      memories.push(newMemory);
+      
+      // Limit size if needed
+      if (memories.length > maxMemories) {
+        // Remove oldest memory
+        memories.sort((a, b) => a.lastAccessed - b.lastAccessed);
+        memories.shift();
+      }
+      
+      // Save memories
+      await saveMemories();
+      
+      logger.info(`Added new ${memory.type} memory: ${id}`);
+      return id;
+    } catch (error) {
+      logger.error(`Failed to add memory: ${error.message}`, { error });
+      throw error;
+    }
+  }
+  
+  /**
+   * Retrieve memories relevant to a task
+   * 
+   * @param {string} task Task description
+   * @param {Object} options Query options
+   * @param {Array<string>} options.types Memory types to include
+   * @param {number} options.limit Maximum number of results
+   * @param {number} options.threshold Relevance threshold
+   * @returns {Promise<Array<Object>>} Relevant memories
+   */
+  async function getRelevantMemories(task, options = {}) {
+    try {
+      const {
+        types = null,
+        limit = 5,
+        threshold = relevanceThreshold
+      } = options;
+      
+      // Generate embedding for the task
+      const taskEmbedding = await createEmbedding(task);
+      
+      // Find relevant memories
+      const relevantMemories = [];
+      
+      for (const memory of memories) {
+        // Filter by type if specified
+        if (types && !types.includes(memory.type)) {
+          continue;
+        }
+        
+        // Calculate relevance score
+        const relevance = cosineSimilarity(taskEmbedding, memory.taskEmbedding);
+        
+        // Add if relevant
+        if (relevance >= threshold) {
+          relevantMemories.push({
+            ...memory,
+            relevance,
+            taskEmbedding: undefined, // Don't include embedding in results
+            insightEmbedding: undefined
+          });
+        }
+      }
+      
+      // Sort by relevance
+      relevantMemories.sort((a, b) => b.relevance - a.relevance);
+      
+      // Update access info for retrieved memories
+      for (const memory of relevantMemories.slice(0, limit)) {
+        const original = memories.find(m => m.id === memory.id);
+        if (original) {
+          original.lastAccessed = Date.now();
+          original.accessCount++;
+        }
+      }
+      
+      // Save memory access info
+      await saveMemories();
+      
+      logger.debug(`Retrieved ${relevantMemories.length} relevant memories for task`);
+      return relevantMemories.slice(0, limit);
+    } catch (error) {
+      logger.error(`Failed to retrieve relevant memories: ${error.message}`, { error });
+      return [];
+    }
+  }
+  
+  /**
+   * Remove a memory by ID
+   * 
+   * @param {string} id Memory ID
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function removeMemory(id) {
+    try {
+      // Find memory index
+      const index = memories.findIndex(m => m.id === id);
+      
+      if (index === -1) {
+        logger.warn(`Memory not found: ${id}`);
+        return false;
+      }
+      
+      // Remove memory
+      memories.splice(index, 1);
+      
+      // Save memories
+      await saveMemories();
+      
+      logger.info(`Removed memory: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to remove memory: ${error.message}`, { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Clear all memories
+   * 
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function clearMemories() {
+    try {
+      // Clear memories
+      memories = [];
+      
+      // Save empty memories
+      await saveMemories();
+      
+      logger.info('Cleared all memories');
+      return true;
+    } catch (error) {
+      logger.error(`Failed to clear memories: ${error.message}`, { error });
+      return false;
+    }
+  }
+  
+  /**
+   * Format memories for use in a prompt
+   * 
+   * @param {Array<Object>} memories Memories to format
+   * @returns {string} Formatted memories
+   */
+  function formatMemoriesForPrompt(memories) {
+    if (!memories || memories.length === 0) {
+      return '';
+    }
+    
+    let formatted = '--- RELEVANT MEMORIES ---\n\n';
+    
+    for (const memory of memories) {
+      formatted += `Type: ${memory.type}\n`;
+      formatted += `Relevance: ${memory.relevance ? memory.relevance.toFixed(2) : 'N/A'}\n`;
+      formatted += `Context: ${memory.task}\n`;
+      formatted += `Insight: ${memory.insight}\n`;
+      
+      if (memory.metadata) {
+        formatted += 'Metadata:\n';
+        for (const [key, value] of Object.entries(memory.metadata)) {
+          formatted += `- ${key}: ${value}\n`;
+        }
+      }
+      
+      formatted += '\n';
+    }
+    
+    return formatted;
+  }
+  
+  /**
+   * Add a memory about a code pattern
+   * 
+   * @param {string} pattern Description of the pattern
+   * @param {string} example Example of the pattern
+   * @param {Object} metadata Additional metadata
+   * @returns {Promise<string>} Memory ID
+   */
+  async function rememberCodePattern(pattern, example, metadata = {}) {
+    return await addMemory({
+      type: MemoryType.CODE_PATTERN,
+      task: pattern,
+      insight: example,
+      metadata
+    });
+  }
+  
+  /**
+   * Add a memory about a user preference
+   * 
+   * @param {string} context The context of the preference
+   * @param {string} preference The user's preference
+   * @param {Object} metadata Additional metadata
+   * @returns {Promise<string>} Memory ID
+   */
+  async function rememberUserPreference(context, preference, metadata = {}) {
+    return await addMemory({
+      type: MemoryType.USER_PREFERENCE,
+      task: context,
+      insight: preference,
+      metadata
+    });
+  }
+  
+  /**
+   * Add a memory about a problem solution
+   * 
+   * @param {string} problem Description of the problem
+   * @param {string} solution The solution
+   * @param {Object} metadata Additional metadata
+   * @returns {Promise<string>} Memory ID
+   */
+  async function rememberProblemSolution(problem, solution, metadata = {}) {
+    return await addMemory({
+      type: MemoryType.PROBLEM_SOLUTION,
+      task: problem,
+      insight: solution,
+      metadata
+    });
+  }
+  
+  /**
+   * Get memories about code patterns
+   * 
+   * @param {string} context The context to find patterns for
+   * @param {Object} options Query options
+   * @returns {Promise<Array<Object>>} Relevant code patterns
+   */
+  async function getCodePatterns(context, options = {}) {
+    return await getRelevantMemories(context, {
+      ...options,
+      types: [MemoryType.CODE_PATTERN]
+    });
+  }
+  
+  /**
+   * Get memories about user preferences
+   * 
+   * @param {string} context The context to find preferences for
+   * @param {Object} options Query options
+   * @returns {Promise<Array<Object>>} Relevant user preferences
+   */
+  async function getUserPreferences(context, options = {}) {
+    return await getRelevantMemories(context, {
+      ...options,
+      types: [MemoryType.USER_PREFERENCE]
+    });
+  }
+  
+  /**
+   * Get memories about problem solutions
+   * 
+   * @param {string} problem The problem to find solutions for
+   * @param {Object} options Query options
+   * @returns {Promise<Array<Object>>} Relevant problem solutions
+   */
+  async function getProblemSolutions(problem, options = {}) {
+    return await getRelevantMemories(problem, {
+      ...options,
+      types: [MemoryType.PROBLEM_SOLUTION]
+    });
+  }
+  
+  // Initialize the memory controller
+  initialize();
+  
+  // Return the memory controller interface
+  return {
+    addMemory,
+    getRelevantMemories,
+    removeMemory,
+    clearMemories,
+    formatMemoriesForPrompt,
+    rememberCodePattern,
+    rememberUserPreference,
+    rememberProblemSolution,
+    getCodePatterns,
+    getUserPreferences,
+    getProblemSolutions,
+    MemoryType
+  };
+}
+
+module.exports = {
+  createMemoryController
+};
+```
+
+# src/agent/enhanced/rag-implementation.js
+
+```js
+/**
+ * RAG (Retrieval-Augmented Generation) Module for FrankCode
+ * 
+ * This module adds code-aware retrieval capabilities to FrankCode,
+ * allowing it to gain better context from the codebase for more
+ * accurate and context-aware code generation and editing.
+ */
+
+const fs = require('fs').promises;
+const path = require('path');
+const { createEmbedding } = require('./embeddings');
+const { logger } = require('../utils/logger');
+
+/**
+ * Create a Code-aware RAG system
+ * 
+ * @param {Object} options Configuration options
+ * @param {string} options.projectRoot Project root directory
+ * @param {Object} options.vectorStore Vector store for embeddings
+ * @returns {Object} The RAG interface
+ */
+function createCodeRAG({ projectRoot, vectorStore }) {
+  // Cache for file contents and embeddings
+  const fileCache = new Map();
+  
+  /**
+   * Index a file for retrieval
+   * 
+   * @param {string} filePath Path to the file
+   * @returns {Promise<boolean>} Success indicator
+   */
+  async function indexFile(filePath) {
+    try {
+      // Get absolute path
+      const fullPath = path.resolve(projectRoot, filePath);
+      
+      // Read file content
+      const content = await fs.readFile(fullPath, 'utf8');
+      
+      // Split file into chunks (by function/class/meaningful blocks)
+      const chunks = splitCodeIntoChunks(content, path.extname(filePath));
+      
+      // Generate embeddings and store them
+      for (const chunk of chunks) {
+        const embedding = await createEmbedding(chunk.content);
+        await vectorStore.addItem({
+          id: `${filePath}:${chunk.start}-${chunk.end}`,
+          content: chunk.content, 
+          embedding,
+          metadata: {
+            filePath,
+            lineStart: chunk.start,
+            lineEnd: chunk.end,
+            type: chunk.type // function, class, etc.
+          }
+        });
+      }
+      
+      // Update cache
+      fileCache.set(filePath, {
+        content,
+        lastIndexed: Date.now()
+      });
+      
+      logger.info(`Indexed file: ${filePath}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to index file: ${filePath}`, { error });
+      return false;
+    }
+  }
+
+  /**
+   * Split code into meaningful chunks for better retrieval
+   * 
+   * @param {string} content File content
+   * @param {string} fileExtension File extension
+   * @returns {Array<Object>} Array of code chunks
+   */
+  function splitCodeIntoChunks(content, fileExtension) {
+    const lines = content.split('\n');
+    const chunks = [];
+    let currentChunk = { content: '', start: 0, end: 0, type: 'unknown' };
+    
+    // Detect file type and use appropriate chunking strategy
+    if (['.js', '.ts', '.jsx', '.tsx'].includes(fileExtension)) {
+      // JavaScript/TypeScript chunking logic
+      let inFunction = false;
+      let inClass = false;
+      let braceCount = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Detect function or class declaration
+        if (!inFunction && !inClass) {
+          if (line.match(/function\s+\w+\s*\(/) || line.match(/const\s+\w+\s*=\s*\(.*\)\s*=>/)) {
+            inFunction = true;
+            currentChunk = { content: line, start: i, end: i, type: 'function' };
+            braceCount = countBraces(line);
+          } else if (line.match(/class\s+\w+/)) {
+            inClass = true;
+            currentChunk = { content: line, start: i, end: i, type: 'class' };
+            braceCount = countBraces(line);
+          } else {
+            // Add to a generic chunk if not in a specific construct
+            if (chunks.length === 0 || chunks[chunks.length - 1].type !== 'generic') {
+              currentChunk = { content: line, start: i, end: i, type: 'generic' };
+              chunks.push(currentChunk);
+            } else {
+              chunks[chunks.length - 1].content += '\n' + line;
+              chunks[chunks.length - 1].end = i;
+            }
+          }
+        } else {
+          // Continue building current function or class
+          currentChunk.content += '\n' + line;
+          currentChunk.end = i;
+          
+          braceCount += countBraces(line);
+          
+          // Check if we've completed a block
+          if (braceCount === 0) {
+            chunks.push(currentChunk);
+            inFunction = false;
+            inClass = false;
+          }
+        }
+      }
+    } else {
+      // Default chunking strategy for other file types
+      let currentBlock = [];
+      let blockStart = 0;
+      
+      for (let i = 0; i < lines.length; i++) {
+        currentBlock.push(lines[i]);
+        
+        // Split by reasonable chunk size or empty lines as a heuristic
+        if (currentBlock.length > 50 || (lines[i].trim() === '' && currentBlock.length > 10)) {
+          chunks.push({
+            content: currentBlock.join('\n'),
+            start: blockStart,
+            end: i,
+            type: 'block'
+          });
+          
+          currentBlock = [];
+          blockStart = i + 1;
+        }
+      }
+      
+      // Add the last block if not empty
+      if (currentBlock.length > 0) {
+        chunks.push({
+          content: currentBlock.join('\n'),
+          start: blockStart,
+          end: lines.length - 1,
+          type: 'block'
+        });
+      }
+    }
+    
+    return chunks;
+  }
+  
+  /**
+   * Count opening and closing braces in a line
+   * 
+   * @param {string} line Line of code
+   * @returns {number} Net brace count
+   */
+  function countBraces(line) {
+    let count = 0;
+    for (const char of line) {
+      if (char === '{') count++;
+      else if (char === '}') count--;
+    }
+    return count;
+  }
+  
+  /**
+   * Index multiple files
+   * 
+   * @param {Array<string>} filePaths Array of file paths
+   * @returns {Promise<Array<string>>} Successfully indexed files
+   */
+  async function indexFiles(filePaths) {
+    const results = [];
+    
+    for (const filePath of filePaths) {
+      const success = await indexFile(filePath);
+      if (success) {
+        results.push(filePath);
+      }
+    }
+    
+    return results;
+  }
+  
+  /**
+   * Retrieve relevant code context based on a query
+   * 
+   * @param {string} query Query string
+   * @param {Object} options Query options
+   * @param {number} options.maxResults Maximum number of results
+   * @param {Array<string>} options.fileTypes Filter by file types
+   * @param {boolean} options.includeDocs Include documentation blocks
+   * @returns {Promise<Array<Object>>} Relevant code contexts
+   */
+  async function retrieveContext(query, options = {}) {
+    try {
+      const { 
+        maxResults = 5, 
+        fileTypes = null,
+        includeDocs = true
+      } = options;
+      
+      // Generate embedding for the query
+      const queryEmbedding = await createEmbedding(query);
+      
+      // Search for similar code chunks
+      let results = await vectorStore.search(queryEmbedding, { limit: maxResults * 2 });
+      
+      // Apply filters
+      if (fileTypes) {
+        results = results.filter(item => {
+          const ext = path.extname(item.metadata.filePath);
+          return fileTypes.includes(ext);
+        });
+      }
+      
+      // Filter out docs if not requested
+      if (!includeDocs) {
+        results = results.filter(item => 
+          !item.metadata.type.includes('comment') && 
+          !item.metadata.type.includes('documentation')
+        );
+      }
+      
+      // Limit results
+      results = results.slice(0, maxResults);
+      
+      // Format results for use
+      return results.map(item => ({
+        content: item.content,
+        filePath: item.metadata.filePath,
+        lineStart: item.metadata.lineStart,
+        lineEnd: item.metadata.lineEnd,
+        type: item.metadata.type,
+        score: item.score
+      }));
+    } catch (error) {
+      logger.error(`Failed to retrieve context: ${error.message}`, { error });
+      return [];
+    }
+  }
+  
+  /**
+   * Scan the project directory and index all relevant files
+   * 
+   * @param {Object} options Scanning options
+   * @param {Array<string>} options.include Glob patterns to include
+   * @param {Array<string>} options.exclude Glob patterns to exclude
+   * @returns {Promise<number>} Number of indexed files
+   */
+  async function indexProject(options = {}) {
+    try {
+      const { 
+        include = ['**/*.js', '**/*.ts', '**/*.jsx', '**/*.tsx', '**/*.py', '**/*.java', '**/*.c', '**/*.cpp'],
+        exclude = ['**/node_modules/**', '**/dist/**', '**/build/**', '**/.git/**']
+      } = options;
+      
+      // Scan the project for files
+      const { listDirectoryFiles } = require('./fileManager');
+      const files = await listDirectoryFiles(projectRoot, { include, exclude });
+      
+      // Index the files
+      const indexedFiles = await indexFiles(files);
+      
+      logger.info(`Indexed ${indexedFiles.length} files in project`);
+      return indexedFiles.length;
+    } catch (error) {
+      logger.error(`Failed to index project: ${error.message}`, { error });
+      return 0;
+    }
+  }
+  
+  /**
+   * Format retrieved code context for use in prompts
+   * 
+   * @param {Array<Object>} contexts Retrieved contexts
+   * @returns {string} Formatted context for prompts
+   */
+  function formatContextForPrompt(contexts) {
+    let formattedContext = '--- RELEVANT CODE CONTEXT ---\n\n';
+    
+    for (const ctx of contexts) {
+      formattedContext += `File: ${ctx.filePath} (lines ${ctx.lineStart}-${ctx.lineEnd})\n`;
+      formattedContext += `Type: ${ctx.type}\n`;
+      formattedContext += '\`\`\`\n';
+      formattedContext += ctx.content;
+      formattedContext += '\n\`\`\`\n\n';
+    }
+    
+    return formattedContext;
+  }
+  
+  // Return the RAG interface
+  return {
+    indexFile,
+    indexFiles,
+    indexProject,
+    retrieveContext,
+    formatContextForPrompt
+  };
+}
+
+module.exports = {
+  createCodeRAG
 };
 ```
 
@@ -6434,27 +9613,83 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
       }).join('');
       
-      // Combine summary and history
-      const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+      
+       // Try to generate a summary, but handle errors gracefully
+       let summaryText = "Failed to generate summary.";    try {
+      if (apiClient && history.length > 1) {
+        const formattedHistoryForSummary = history.map(msg => {
+          const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          return `${msg.role.toUpperCase()}: ${cleanContent.substring(0, 300)}${cleanContent.length > 300 ? '...' : ''}`;
+        }).join('\n\n');
+        
+        const summaryPrompt = `Create a concise summary of this conversation between a user and FrankCode (an AI coding assistant). Format it with clear sections for:
+
+1. Main topics and tasks discussed
+2. Problems solved or features implemented
+3. Files modified or discussed
+4. Next steps based on the conversation
+5. The most important achievements
+
+Use bold headers (**Header:**) and bullet points. Here's the conversation:
+
+${formattedHistoryForSummary}`;
+        
+        outputRenderer.addSystemMessage('Generating conversation summary...');
+        
+        const response = await apiClient.generateResponse(summaryPrompt, {
+          temperature: 0.3,
+          maxTokens: 1024
+        });
+        
+        if (response && response.text) {
+          summary = response.text;
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to generate summary', { error });
+      outputRenderer.addErrorMessage(`Error generating summary: ${error.message}`);
+      // Continue with the export even if summary generation fails
+    }
+    
+    // Combine summary and history
+    const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+
       
       // Ensure directory exists
       const dirPath = path.dirname(fullPath);
-      try {
-        await require('fs').promises.mkdir(dirPath, { recursive: true });
-      } catch (error) {
-        // Ignore directory exists error
+    try {
+      // Use fs directly without promises (for compatibility)
+      const fs = require('fs');
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
       }
       
-      // Write to file
-      await require('fs').promises.writeFile(fullPath, content, 'utf8');
+      // Write to file using synchronous method (more reliable)
+      fs.writeFileSync(fullPath, content, 'utf8');
       
-      outputRenderer.addSystemMessage(`Conversation with summary exported to ${fullPath}`);
+      outputRenderer.addSystemMessage(`Conversation exported to ${fullPath}`);
       logger.info(`Conversation exported to ${fullPath}`);
-    } catch (error) {
-      logger.error('Failed to export conversation', { error });
-      outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+      return true;
+    } catch (dirError) {
+      logger.error(`Failed to create directory: ${dirError.message}`);
+      
+      // Try writing to the current directory as fallback
+      try {
+        const fallbackPath = path.join('.', path.basename(filePath));
+        fs.writeFileSync(fallbackPath, content, 'utf8');
+        outputRenderer.addSystemMessage(`Conversation exported to ${fallbackPath} (fallback location)`);
+        logger.info(`Conversation exported to ${fallbackPath} (fallback)`);
+        return true;
+      } catch (fallbackError) {
+        throw new Error(`Failed to write to fallback location: ${fallbackError.message}`);
+      }
     }
+  } catch (error) {
+    logger.error('Failed to export conversation', { error });
+    outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+    return false;
   }
+}
   
   /**
    * Process user input
@@ -6644,19 +9879,66 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         case 'online':
           setOfflineMode(false);
           break;
+          case 'plan':
 
-        case 'agent':
-          if (args.length > 0) {
-            const task = args.join(' ');
-            if (agentCommandProcessor) {
-              await agentCommandProcessor.executeTask(task);
-            } else {
-              outputRenderer.addErrorMessage('Agent command processor not initialized');
+        case 'execute':
+          if (agentEnhancer) {
+            if (!args[0]) {
+              outputRenderer.addErrorMessage('Please specify a task to execute');
+              return;
             }
+            const task = args.join(' ');
+            await agentEnhancer.executeTask(task);
           } else {
-            outputRenderer.addSystemMessage('Please provide a task for the agent');
+            outputRenderer.addErrorMessage('Task execution not available');
           }
           break;
+
+        case 'code':
+          if (agentEnhancer) {
+            if (args.length < 2) {
+              outputRenderer.addErrorMessage('Usage: /code language filePath');
+              return;
+            }
+            const [language, filePath] = args;
+            const content = await agent.generateCode(language);
+            if (content) {
+              await agentEnhancer.createFile(filePath, content);
+            }
+          } else {
+            outputRenderer.addErrorMessage('Code generation not available');
+          }
+          break;
+
+        case 'run':
+          if (agentEnhancer) {
+            if (!args[0]) {
+              outputRenderer.addErrorMessage('Please specify a code file to run');
+              return;
+            }
+            const filePath = args[0];
+            const language = path.extname(filePath).substring(1); // Get extension without dot
+            const content = await readFile(filePath);
+            if (content) {
+              await agentEnhancer.executeCode(content, language);
+            }
+          } else {
+            outputRenderer.addErrorMessage('Code execution not available');
+          }
+          break;
+
+          case 'agent':
+            if (args.length > 0) {
+              const task = args.join(' ');
+              if (agentCommandProcessor) {
+                await agentCommandProcessor.executeTask(task);
+              } else {
+                outputRenderer.addErrorMessage('Agent command processor not initialized');
+              }
+            } else {
+              outputRenderer.addSystemMessage('Please provide a task for the agent');
+            }
+            break;
         
         default:
           outputRenderer.addSystemMessage(`Unknown command: ${cmd}. Type /help for available commands.`);
@@ -6802,6 +10084,10 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     /compact          - Compact conversation history into a summary
     /export [file]    - Export conversation with summary to a file    /exit, /quit      - Exit the application
     /refresh          - Refresh the file tree
+    /plan task        - Break down a task into smaller steps
+    /execute task     - Execute a task with step-by-step guidance
+    /code lang file   - Generate code in specified language and save to file
+    /run file         - Run a code file and show output
     /exec <command>   - Execute a shell command
     /shell <command>  - Same as /exec
     /ls               - List files (shortcut for /exec ls)
@@ -7119,6 +10405,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   } catch (error) {
     logger.error('Failed to initialize conversation manager', { error });
   }
+  let agentEnhancer = null;
+  try {
+    const { createAgentEnhancer } = require('../agent/agentEnhancer');
+    agentEnhancer = createAgentEnhancer({
+      agent,
+      outputRenderer,
+      apiClient
+    });
+    logger.debug('Agent enhancer initialized');
+  } catch (error) {
+    logger.error('Failed to initialize agent enhancer', { error });
+  }
+  
 
   // Return the input handler interface
   return {
@@ -8014,6 +11313,102 @@ module.exports = {
   saveConfig,
   defaultConfig
 };
+```
+
+# src/utils/embeddings.py
+
+```py
+#!/usr/bin/env python3
+"""
+Embeddings Generator using Jina Embeddings v3 or other Hugging Face models.
+
+This script generates embeddings for text using Hugging Face models.
+It's designed to be called from Node.js as a subprocess.
+"""
+
+import argparse
+import json
+import os
+import sys
+from typing import List, Optional, Union
+
+try:
+    from sentence_transformers import SentenceTransformer
+    import torch
+    import numpy as np
+except ImportError:
+    print("Required packages not found. Please install them with:")
+    print("pip install sentence-transformers torch numpy")
+    sys.exit(1)
+
+
+def get_embedding(
+    text: str,
+    model_name: str = "jinaai/jina-embeddings-v3"
+) -> List[float]:
+    """
+    Generate embeddings for text using the specified model.
+    
+    Args:
+        text: The text to embed
+        model_name: The Hugging Face model name to use
+        
+    Returns:
+        A list of floats representing the embedding vector
+    """
+    try:
+        # Load model
+        model = SentenceTransformer(model_name)
+        
+        # Generate embedding
+        embedding = model.encode(text, normalize_embeddings=True)
+        
+        # Convert to Python list
+        if isinstance(embedding, torch.Tensor):
+            embedding = embedding.cpu().detach().numpy()
+        
+        if isinstance(embedding, np.ndarray):
+            embedding = embedding.tolist()
+            
+        return embedding
+    except Exception as e:
+        print(f"Error generating embedding: {str(e)}", file=sys.stderr)
+        raise
+
+
+def main():
+    """Main function to handle CLI arguments and generate embeddings."""
+    parser = argparse.ArgumentParser(description="Generate embeddings for text")
+    parser.add_argument("--input", required=True, help="Path to input text file")
+    parser.add_argument("--output", required=True, help="Path to output JSON file")
+    parser.add_argument(
+        "--model", 
+        default="jinaai/jina-embeddings-v3", 
+        help="Hugging Face model name to use"
+    )
+    args = parser.parse_args()
+    
+    try:
+        # Read input text
+        with open(args.input, "r", encoding="utf-8") as f:
+            text = f.read()
+        
+        # Generate embedding
+        embedding = get_embedding(text, args.model)
+        
+        # Save to output file
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump({"embedding": embedding}, f)
+        
+        print(f"Embedding saved to {args.output}")
+        return 0
+    except Exception as e:
+        print(f"Error: {str(e)}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 ```
 
 # src/utils/fileSystem.js

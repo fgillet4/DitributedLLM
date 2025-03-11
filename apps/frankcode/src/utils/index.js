@@ -28,5 +28,7 @@ module.exports = {
   formatDuration,
   formatPercentage,
   truncate,
-  createTokenMonitor
+  createTokenMonitor,
+  fileOperations: require('./fileOperations')
+
 };

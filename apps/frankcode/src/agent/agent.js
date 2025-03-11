@@ -129,19 +129,25 @@ function createAgent({ apiClient, tokenMonitor, projectFiles, projectRoot }) {
    */
   async function modifyFile(filePath, newContent) {
     try {
-      const fullPath = path.resolve(projectRoot, filePath);
-      
-      // Check if file exists
-      const exists = await checkFileExists(fullPath);
-      if (!exists) {
-        throw new Error(`File not found: ${fullPath}`);
+      // Check if the file directory exists, create if not
+      const dir = path.dirname(filePath);
+      try {
+        await fs.mkdir(dir, { recursive: true });
+      } catch (err) {
+        logger.error(`Failed to create directory: ${dir}`, { error: err });
       }
       
-      // Get original content for diff
-      const originalContent = await readFile(fullPath);
-      
+      // Check if file exists
+      let originalContent = '';
+      try {
+        originalContent = await fs.readFile(filePath, 'utf8');
+      } catch (err) {
+        // File doesn't exist, that's ok for new files
+        logger.info(`Creating new file: ${filePath}`);
+      }
+
       // Write new content
-      await writeFile(fullPath, newContent);
+      await fs.writeFile(filePath, newContent, 'utf8');
       
       // Update context
       if (fileContexts.has(filePath)) {
@@ -154,6 +160,15 @@ function createAgent({ apiClient, tokenMonitor, projectFiles, projectRoot }) {
         
         // Update context manager
         contextManager.updateFileContext(filePath, newContent);
+      } else {
+        // Add to context since it's a new file
+        fileContexts.set(filePath, {
+          content: newContent,
+          tokens: countTokens(newContent),
+          lastModified: new Date()
+        });
+      
+        contextManager.addFileContext(filePath, newContent);
       }
       
       logger.info(`Modified file: ${filePath}`);
@@ -173,7 +188,10 @@ function createAgent({ apiClient, tokenMonitor, projectFiles, projectRoot }) {
   async function findFiles(pattern) {
     try {
       // Implementation would use something like fast-glob
-      return [];
+      const files = await listDirectoryFiles(projectRoot, { 
+        include: [pattern] 
+      });
+      return files;
     } catch (error) {
       logger.error(`Failed to find files: ${pattern}`, { error });
       return [];
@@ -304,8 +322,8 @@ ${conversationHistory.map(msg => `${msg.role.toUpperCase()}: ${msg.content}`).jo
     getContextManager: () => contextManager,
     getFileContexts: () => fileContexts,
     getConversationHistory: () => conversationHistory,
-    addSystemContext,  // Add this
-    reset,  // This should replace the existing reset function
+    addSystemContext,
+    reset,
     setApiClient: (newClient) => {
       apiClient = newClient;
     }

@@ -1,5 +1,5 @@
 /**
- * SynthBot - Main application entry point
+ * FrankCode - Main application entry point
  * 
  * This module initializes and coordinates the different components:
  * - Terminal UI
@@ -18,7 +18,7 @@ const {
 } = require('./utils');
 
 /**
- * Start the SynthBot application
+ * Start the FrankCode application
  * @param {Object} config Configuration object
  */
 async function startApp(config) {
@@ -26,7 +26,7 @@ async function startApp(config) {
     // Setup logging based on configuration - Specify TUI mode to disable console logging
     setupLogging(config.logging, true); // Pass 'true' to indicate we're in TUI mode
     
-    logger.info('Starting SynthBot...');
+    logger.info('Starting FrankCode...');
     logger.debug('Configuration loaded', { config });
     
     // Initial project scan
@@ -41,7 +41,6 @@ async function startApp(config) {
     // Create API client
     let apiClient;
     
-    // Check if offline mode is enabled
     // Check if offline mode is enabled
     if (config.offline) {
       logger.info('Running in offline mode - no LLM connection will be attempted');
@@ -133,6 +132,8 @@ async function startApp(config) {
       config: config.ui,
       projectRoot: config.projectRoot
     });
+
+    app.screen.apiClient = apiClient;
     
     // Start the TUI
     app.start();
@@ -151,7 +152,7 @@ async function startApp(config) {
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
     
-    logger.info('SynthBot started successfully');
+    logger.info('FrankCode started successfully');
     
   } catch (error) {
     logger.error('Failed to start FrankCode', { error });

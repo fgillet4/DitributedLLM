@@ -9,7 +9,8 @@ const { exec } = require('child_process');
 const util = require('util');
 const execPromise = util.promisify(exec);
 const path = require('path');
-const { createConversationManager } = require('../agent/conversationManager');
+const fs = require('fs').promises;
+const fileOperations = require('../utils/fileOperations');
 
 /**
  * Create an input handler
@@ -33,7 +34,10 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   
   // Agent command processor - will be set after initialization
   let agentCommandProcessor = null;
-  
+  let apiClient = null;
+  if (screen && screen.apiClient) {
+    apiClient = screen.apiClient;
+  }
   // Initialize
   function init() {
     // Add event listener for keypress to ensure UI updates
@@ -227,33 +231,84 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         return `${msg.role.toUpperCase()}:\n${cleanContent}\n\n---\n\n`;
       }).join('');
       
-      // Combine summary and history
-      const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+      
+       // Try to generate a summary, but handle errors gracefully
+       let summaryText = "Failed to generate summary.";    try {
+      if (apiClient && history.length > 1) {
+        const formattedHistoryForSummary = history.map(msg => {
+          const cleanContent = msg.content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+          return `${msg.role.toUpperCase()}: ${cleanContent.substring(0, 300)}${cleanContent.length > 300 ? '...' : ''}`;
+        }).join('\n\n');
+        
+        const summaryPrompt = `Create a concise summary of this conversation between a user and FrankCode (an AI coding assistant). Format it with clear sections for:
+
+1. Main topics and tasks discussed
+2. Problems solved or features implemented
+3. Files modified or discussed
+4. Next steps based on the conversation
+5. The most important achievements
+
+Use bold headers (**Header:**) and bullet points. Here's the conversation:
+
+${formattedHistoryForSummary}`;
+        
+        outputRenderer.addSystemMessage('Generating conversation summary...');
+        
+        const response = await apiClient.generateResponse(summaryPrompt, {
+          temperature: 0.3,
+          maxTokens: 1024
+        });
+        
+        if (response && response.text) {
+          summary = response.text;
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to generate summary', { error });
+      outputRenderer.addErrorMessage(`Error generating summary: ${error.message}`);
+      // Continue with the export even if summary generation fails
+    }
+    
+    // Combine summary and history
+    const content = `# Conversation Summary\n\n${summary}\n\n# Full Conversation\n\n${formattedHistory}`;
+
       
       // Ensure directory exists
       const dirPath = path.dirname(fullPath);
-      try {
-        await require('fs').promises.mkdir(dirPath, { recursive: true });
-      } catch (error) {
-        // Ignore directory exists error
+    try {
+      // Use fs directly without promises (for compatibility)
+      const fs = require('fs');
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath, { recursive: true });
       }
       
-      // Write to file
-      await require('fs').promises.writeFile(fullPath, content, 'utf8');
+      // Write to file using synchronous method (more reliable)
+      fs.writeFileSync(fullPath, content, 'utf8');
       
-      outputRenderer.addSystemMessage(`Conversation with summary exported to ${fullPath}`);
+      outputRenderer.addSystemMessage(`Conversation exported to ${fullPath}`);
       logger.info(`Conversation exported to ${fullPath}`);
-    } catch (error) {
-      logger.error('Failed to export conversation', { error });
-      outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+      return true;
+    } catch (dirError) {
+      logger.error(`Failed to create directory: ${dirError.message}`);
+      
+      // Try writing to the current directory as fallback
+      try {
+        const fallbackPath = path.join('.', path.basename(filePath));
+        fs.writeFileSync(fallbackPath, content, 'utf8');
+        outputRenderer.addSystemMessage(`Conversation exported to ${fallbackPath} (fallback location)`);
+        logger.info(`Conversation exported to ${fallbackPath} (fallback)`);
+        return true;
+      } catch (fallbackError) {
+        throw new Error(`Failed to write to fallback location: ${fallbackError.message}`);
+      }
     }
+  } catch (error) {
+    logger.error('Failed to export conversation', { error });
+    outputRenderer.addErrorMessage(`Error exporting conversation: ${error.message}`);
+    return false;
   }
-  
-  /**
-   * Process user input
-   * 
-   * @param {string} input User input
-   */
+}
+
   /**
    * Process user input
    * 
@@ -270,6 +325,26 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       // Display user input
       outputRenderer.addUserMessage(input);
       
+      // Process file modifications directly if the input matches our format
+      const fileBlockRegex = /\`\`\`file:(.*?)\n([\s\S]*?)\`\`\`/g;
+      let match;
+      const fileModifications = [];
+  
+      while ((match = fileBlockRegex.exec(input)) !== null) {
+        const filePath = match[1].trim();
+        const content = match[2];
+        
+        fileModifications.push({
+          filePath,
+          content
+        });
+      }
+  
+      if (fileModifications.length > 0) {
+        await handleFileModifications(fileModifications);
+        return;
+      }
+  
       // Check if this might be an agent task
       if (agentCommandProcessor && agentCommandProcessor.isPotentialAgentTask(input)) {
         const wasHandled = await agentCommandProcessor.processCommand(input);
@@ -330,6 +405,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       widget.screen.render();
     }
   }
+
   
   /**
    * Process a command
@@ -360,9 +436,8 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         case 'export':
           await exportConversation(args[0]);
           break;
+
         case 'exit':
-          process.exit(0);
-          break;
         case 'quit':
           process.exit(0);
           break;
@@ -372,6 +447,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           outputRenderer.addSystemMessage('File tree refreshed');
           break;
         
+        case 'bash':
         case 'exec':
         case 'shell':
           await executeShellCommand(args.join(' '));
@@ -396,7 +472,27 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
           }
           await selectModel(args[0]);
           break;
-        
+
+        case 'create':
+          if (args.length < 1) {
+            outputRenderer.addErrorMessage('Usage: /create <filename> [content]');
+            return;
+          }
+          const filename = args[0];
+          const content = args.slice(1).join(' ') || '';
+          await createFile(filename, content);
+          break;
+
+        case 'edit':
+          if (args.length < 1) {
+            outputRenderer.addErrorMessage('Usage: /edit <filename> [content]');
+            return;
+          }
+          const editFilename = args[0];
+          const editContent = args.slice(1).join(' ');
+          await editFile(editFilename, editContent);
+          break;
+
         case 'load':
           await loadFile(args[0]);
           break;
@@ -437,19 +533,66 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         case 'online':
           setOfflineMode(false);
           break;
+          case 'plan':
 
-        case 'agent':
-          if (args.length > 0) {
-            const task = args.join(' ');
-            if (agentCommandProcessor) {
-              await agentCommandProcessor.executeTask(task);
-            } else {
-              outputRenderer.addErrorMessage('Agent command processor not initialized');
+        case 'execute':
+          if (agentEnhancer) {
+            if (!args[0]) {
+              outputRenderer.addErrorMessage('Please specify a task to execute');
+              return;
             }
+            const task = args.join(' ');
+            await agentEnhancer.executeTask(task);
           } else {
-            outputRenderer.addSystemMessage('Please provide a task for the agent');
+            outputRenderer.addErrorMessage('Task execution not available');
           }
           break;
+
+        case 'code':
+          if (agentEnhancer) {
+            if (args.length < 2) {
+              outputRenderer.addErrorMessage('Usage: /code language filePath');
+              return;
+            }
+            const [language, filePath] = args;
+            const content = await agent.generateCode(language);
+            if (content) {
+              await agentEnhancer.createFile(filePath, content);
+            }
+          } else {
+            outputRenderer.addErrorMessage('Code generation not available');
+          }
+          break;
+
+        case 'run':
+          if (agentEnhancer) {
+            if (!args[0]) {
+              outputRenderer.addErrorMessage('Please specify a code file to run');
+              return;
+            }
+            const filePath = args[0];
+            const language = path.extname(filePath).substring(1); // Get extension without dot
+            const content = await readFile(filePath);
+            if (content) {
+              await agentEnhancer.executeCode(content, language);
+            }
+          } else {
+            outputRenderer.addErrorMessage('Code execution not available');
+          }
+          break;
+
+          case 'agent':
+            if (args.length > 0) {
+              const task = args.join(' ');
+              if (agentCommandProcessor) {
+                await agentCommandProcessor.executeTask(task);
+              } else {
+                outputRenderer.addErrorMessage('Agent command processor not initialized');
+              }
+            } else {
+              outputRenderer.addSystemMessage('Please provide a task for the agent');
+            }
+            break;
         
         default:
           outputRenderer.addSystemMessage(`Unknown command: ${cmd}. Type /help for available commands.`);
@@ -471,12 +614,10 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
    */
   async function selectModel(modelIdentifier) {
     try {
-      // Get models from Ollama
-      const fetch = require('node-fetch');
-      const host = 'localhost';
-      const port = 11434;
+      // Get the endpoint (default to localhost if not set)
+      const endpoint = widget.screen.ollamaEndpoint || 'http://localhost:11434';
       
-      const response = await fetch(`http://${host}:${port}/api/tags`);
+      const response = await fetch(`${endpoint}/api/tags`);
       
       if (!response.ok) {
         throw new Error(`Ollama API returned status ${response.status}`);
@@ -484,6 +625,7 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       
       const data = await response.json();
       const models = data.models || [];
+  
       
       if (models.length === 0) {
         outputRenderer.addSystemMessage('No models found');
@@ -517,10 +659,11 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       
       try {
         // Create new client with selected model
-        const { createClient } = require('../api');
+        const url = new URL(endpoint);
+    
         const newClient = createClient({
-          host,
-          port,
+          host: url.hostname,
+          port: parseInt(url.port),
           model,
           temperature: 0.7,
           api: 'ollama'
@@ -550,15 +693,38 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     try {
       outputRenderer.addSystemMessage('Fetching available models from Ollama...');
       
-      // Get models from Ollama
-      const fetch = require('node-fetch');
-      const host = 'localhost';
-      const port = 11434;
+      // Try different possible Ollama endpoints
+      const endpoints = [
+        'http://localhost:11434/api/tags',
+        'http://127.0.0.1:11434/api/tags'
+      ];
       
-      const response = await fetch(`http://${host}:${port}/api/tags`);
+      // If screen.config exists, also try that host
+      if (widget.screen && widget.screen.config && widget.screen.config.llm) {
+        const configHost = widget.screen.config.llm.coordinatorHost;
+        const configPort = widget.screen.config.llm.coordinatorPort;
+        endpoints.push(`http://${configHost}:${configPort}/api/tags`);
+      }
       
-      if (!response.ok) {
-        throw new Error(`Ollama API returned status ${response.status}`);
+      let response = null;
+      let endpoint = null;
+      
+      // Try each endpoint until one works
+      for (const ep of endpoints) {
+        try {
+          const resp = await fetch(ep);
+          if (resp.ok) {
+            response = resp;
+            endpoint = ep;
+            break;
+          }
+        } catch (err) {
+          // Continue to next endpoint
+        }
+      }
+      
+      if (!response) {
+        throw new Error('Could not connect to any Ollama endpoint');
       }
       
       const data = await response.json();
@@ -578,9 +744,12 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       
       // Prompt to select a model
       outputRenderer.addSystemMessage('Type /selectmodel <number> or /selectmodel <name> to select a model');
+      
+      // Store the endpoint for future use
+      widget.screen.ollamaEndpoint = endpoint.replace('/api/tags', '');
     } catch (error) {
       outputRenderer.addErrorMessage(`Failed to fetch models: ${error.message}`);
-      outputRenderer.addSystemMessage('Make sure Ollama is running with `ollama serve`');
+      outputRenderer.addSystemMessage('Make sure Ollama is running with `ollama serve`. Try running: /offline to continue without LLM.');
     }
   }
   
@@ -593,8 +762,12 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     /help             - Show this help text
     /clear            - Clear the conversation history
     /compact          - Compact conversation history into a summary
-    /export [file]    - Export conversation with summary to a file    /exit, /quit      - Exit the application
+    /export [file]    - Export conversation with summary to a file 
     /refresh          - Refresh the file tree
+    /plan task        - Break down a task into smaller steps
+    /execute task     - Execute a task with step-by-step guidance
+    /code lang file   - Generate code in specified language and save to file
+    /run file         - Run a code file and show output
     /exec <command>   - Execute a shell command
     /shell <command>  - Same as /exec
     /ls               - List files (shortcut for /exec ls)
@@ -610,7 +783,15 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     /no, /n           - Reject the current file modification
     /yesall, /ya      - Approve all pending file modifications
     /noall, /na       - Reject all pending file modifications
-  
+    /create <file>    - Create a new file
+    /edit <file>      - Edit an existing file
+
+  File Operations:
+    You can create or modify files by using the syntax:
+    \`\`\`file:path/to/file.js
+    // File content here
+    \`\`\`
+
   Keyboard shortcuts:
     Ctrl+C            - Exit application
     Ctrl+R            - Refresh file tree
@@ -729,11 +910,13 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     
     if (approve) {
       try {
-        // Apply the modification
-        const fullPath = path.resolve(path.join(screen.cwd, mod.filePath));
-        await agent.modifyFile(fullPath, mod.content);
+        // Apply the modification using fileOperations
+        await fileOperations.writeFile(mod.filePath, mod.content);
         
         outputRenderer.addSystemMessage(`✅ Applied changes to ${mod.filePath}`);
+        
+        // Refresh file tree
+        await fileTree.refresh();
       } catch (error) {
         logger.error(`Failed to apply modification to ${mod.filePath}`, { error });
         outputRenderer.addErrorMessage(`Error applying modification: ${error.message}`);
@@ -768,9 +951,8 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     
     for (const mod of pendingModifications) {
       try {
-        // Apply the modification
-        const fullPath = path.resolve(path.join(screen.cwd, mod.filePath));
-        await agent.modifyFile(fullPath, mod.content);
+        // Apply the modification using fileOperations
+        await fileOperations.writeFile(mod.filePath, mod.content);
         applied++;
       } catch (error) {
         logger.error(`Failed to apply modification to ${mod.filePath}`, { error });
@@ -779,6 +961,11 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     }
     
     outputRenderer.addSystemMessage(`Applied ${applied}/${total} modifications (${failed} failed).`);
+    
+    // Refresh file tree if any changes were applied
+    if (applied > 0) {
+      await fileTree.refresh();
+    }
     
     // Clear pending modifications
     pendingModifications.length = 0;
@@ -838,6 +1025,64 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
       }
     }
   }
+
+  /**
+ * Create a new file
+ * 
+ * @param {string} filePath File path
+ * @param {string} content File content
+ */
+  async function createFile(filePath, content) {
+    if (!filePath) {
+      outputRenderer.addErrorMessage('No file specified');
+      return;
+    }
+    
+    try {
+      // Use fileOperations service instead of direct fs calls
+      await fileOperations.createFile(filePath, content);
+      
+      outputRenderer.addSystemMessage(`Created file: ${filePath}`);
+      
+      // Refresh file tree
+      await fileTree.refresh();
+    } catch (error) {
+      logger.error(`Failed to create file: ${filePath}`, { error });
+      outputRenderer.addErrorMessage(`Error creating file: ${error.message}`);
+    }
+  }
+
+  /**
+   * Edit an existing file
+   * 
+   * @param {string} filePath File path
+   * @param {string} content New content
+   */
+  async function editFile(filePath, content) {
+    if (!filePath) {
+      outputRenderer.addErrorMessage('No file specified');
+      return;
+    }
+    
+    try {
+      // Check if content is empty (just displaying the file)
+      if (!content || content.trim() === '') {
+        // Read the file using fileOperations
+        const fileContent = await fileOperations.readFile(filePath);
+        outputRenderer.addSystemMessage(`Content of ${filePath}:`);
+        outputRenderer.addCodeBlock(fileContent);
+        return;
+      }
+      
+      // Update file using fileOperations
+      await fileOperations.writeFile(filePath, content);
+      
+      outputRenderer.addSystemMessage(`Updated file: ${filePath}`);
+    } catch (error) {
+      logger.error(`Failed to edit file: ${filePath}`, { error });
+      outputRenderer.addErrorMessage(`Error editing file: ${error.message}`);
+    }
+  }
   
   /**
    * Load a file into context
@@ -851,8 +1096,16 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     }
     
     try {
-      // Resolve path
-      const fullPath = path.resolve(path.join(screen.cwd, filePath));
+      // Check if file exists using fileOperations
+      const exists = await fileOperations.fileExists(filePath);
+      
+      if (!exists) {
+        outputRenderer.addErrorMessage(`File not found: ${filePath}`);
+        return;
+      }
+      
+      // Resolve to full path for the agent
+      const fullPath = fileOperations.resolvePath(filePath);
       
       // Load into agent context
       await agent.loadFileContext(fullPath);
@@ -884,12 +1137,8 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
         return `${msg.role.toUpperCase()}:\n${msg.content}\n\n`;
       }).join('---\n\n');
       
-      // Resolve path
-      const fullPath = path.resolve(path.join(screen.cwd, filePath));
-      
-      // Write to file
-      const fs = require('fs').promises;
-      await fs.writeFile(fullPath, formatted, 'utf8');
+      // Write to file using fileOperations
+      await fileOperations.writeFile(filePath, formatted);
       
       outputRenderer.addSystemMessage(`Conversation saved to: ${filePath}`);
     } catch (error) {
@@ -912,6 +1161,19 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
   } catch (error) {
     logger.error('Failed to initialize conversation manager', { error });
   }
+  let agentEnhancer = null;
+  try {
+    const { createAgentEnhancer } = require('../agent/agentEnhancer');
+    agentEnhancer = createAgentEnhancer({
+      agent,
+      outputRenderer,
+      apiClient
+    });
+    logger.debug('Agent enhancer initialized');
+  } catch (error) {
+    logger.error('Failed to initialize agent enhancer', { error });
+  }
+  
 
   // Return the input handler interface
   return {
@@ -919,7 +1181,6 @@ function createInputHandler({ widget, outputRenderer, agent, fileTree, screen })
     processCommand,
     handleFileModifications,
     agentCommandProcessor, // Allow setting from outside
-    conversationManager    // Add this to make it accessible from outside if needed
   };
 }
 

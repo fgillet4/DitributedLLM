@@ -33,10 +33,72 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     fullUnicode: true,
     dockBorders: true,
     autoPadding: true,
-    sendFocus: false,
+    sendFocus: true,
     mouseEnabled: true,
-    useMouse: true
+    useMouse: true,
+    // Better mouse settings for selection
+    grabMouse: true, 
+    forceUnicode: true,
+    // Terminal capabilities for better mouse reporting
+    terminal: '256color',
+    // Allow faster mouse refresh
+    fastCSR: true,
+    // Additional rendering options
+    cursor: {
+      artificial: true,
+      shape: 'block',
+      blink: true,
+      color: 'blue'
+    }
   });
+
+  // Add global copy/paste handler
+screen.key(['C-S-c'], () => {
+  const focused = screen.focused;
+  if (focused && focused.getContent) {
+    const content = focused.getContent();
+    try {
+      require('child_process').spawn('clip').stdin.end(content);
+      if (outputRenderer) {
+        outputRenderer.addSystemMessage('Content copied to clipboard');
+      }
+    } catch (error) {
+      if (outputRenderer) {
+        outputRenderer.addErrorMessage('Failed to copy to clipboard');
+      }
+    }
+  }
+});
+
+// Handle global mouse wheel events more smoothly
+screen.on('wheeldown', () => {
+  const focused = screen.focused;
+  if (focused && focused.scroll) {
+    focused.scroll(5);
+    screen.render();
+  }
+});
+
+screen.on('wheelup', () => {
+  const focused = screen.focused;
+  if (focused && focused.scroll) {
+    focused.scroll(-5);
+    screen.render();
+  }
+});
+
+// Add a smoother rendering interval
+const renderInterval = setInterval(() => {
+  if (screen.lockKeys) return; // Don't render during key processing
+  screen.render();
+}, 50); // More frequent updates for smoother experience
+
+// Clean up when done
+screen.key(['C-c'], () => {
+  clearInterval(renderInterval);
+  screen.destroy();
+  process.exit(0);
+});
 
   // Store config and project root in screen for access by components
   screen.config = config;
@@ -77,21 +139,20 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
         bg: 'black'
       }
     },
-    // Add these settings for smoother scrolling
+    // Improve scrolling experience
     mouse: true,
-    scrollable: true,
-    alwaysScroll: true,
-    scrollbar: true,
     keys: true,
-    vi: false,  // Turn off vi mode to enable normal selection
+    vi: false,  // Turn off vi mode for better mouse interactions
     inputOnFocus: false,
     // Increase scroll amount for smoother experience
-    scrollAmount: 3,
+    scrollAmount: 10,
     // Lower scroll time for smoother animation
-    scrollSpeed: 10,
-    // Allow mousewheel scrolling
-    wheelBehavior: 'scroll',
-    // Improved border style
+    scrollSpeed:  1,
+    // Enable selection and copying
+    clickable: true,
+    copyMode: true,
+    tags: true,
+    // Set border color for better visibility
     border: {
       type: 'line',
       fg: 'blue'
@@ -100,7 +161,10 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     padding: {
       left: 1,
       right: 1
-    }
+    },
+    // For better mouse-based text selection
+    grabKeys: true,
+    mouseDrag: true
   });
   
   // Add additional key bindings for scrolling
@@ -124,37 +188,50 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     conversationPanel.scroll(3); // Scroll down 3 lines
     screen.render();
   });
-  
-  // Add a key binding to toggle focus to the conversation panel for scrolling
-  screen.key(['C-f'], () => {
-    conversationPanel.focus();
-    statusBarController.update('Scroll mode active. Press Tab to return to input.');
-    screen.render();
-  });
-  
-  // Update the tab key handler to cycle through all elements
-  screen.key(['tab'], () => {
-    if (screen.focused === inputBox) {
-      fileTreePanel.focus();
-    } else if (screen.focused === fileTreePanel) {
-      conversationPanel.focus();
-    } else {
-      inputBox.focus();
-    }
-    screen.render();
-  });
-  
-  // Add a mouse handler for better wheel behavior
-  conversationPanel.on('wheeldown', () => {
-    conversationPanel.scroll(3); // Scroll down 3 lines
-    screen.render();
-  });
-  
-  conversationPanel.on('wheelup', () => {
-    conversationPanel.scroll(-3); // Scroll up 3 lines
-    screen.render();
-  });
-  
+  // Add mouse handlers for better wheel behavior
+conversationPanel.on('wheeldown', () => {
+  conversationPanel.scroll(5); // Scroll down 5 lines
+  screen.render();
+});
+
+conversationPanel.on('wheelup', () => {
+  conversationPanel.scroll(-5); // Scroll up 5 lines
+  screen.render();
+});
+
+conversationPanel.key(['C-c'], () => {
+  if (conversationPanel.selected) {
+    const selection = conversationPanel.getContent().substring(
+      conversationPanel.selected.start,
+      conversationPanel.selected.end
+    );
+    require('child_process').spawn('clip').stdin.end(selection);
+    outputRenderer.addSystemMessage('Text copied to clipboard');
+  }
+});
+
+// Allow selection with mouse
+conversationPanel.on('mousedown', (data) => {
+  conversationPanel.focus();
+  conversationPanel.grabMouse = true;
+  conversationPanel.startSelection = { x: data.x, y: data.y };
+  screen.render();
+});
+
+conversationPanel.on('mouseup', () => {
+  conversationPanel.grabMouse = false;
+  screen.render();
+});
+
+// Use Alt+Up/Down for faster scrolling
+conversationPanel.key(['a-up'], () => {
+  conversationPanel.scroll(-conversationPanel.height / 2);
+  screen.render();
+});
+conversationPanel.key(['a-down'], () => {
+  conversationPanel.scroll(conversationPanel.height / 2);
+  screen.render();
+});
   const inputBox = grid.set(8, 2, 2, 10, blessed.textarea, {
     label: 'Command',
     inputOnFocus: true,
@@ -218,49 +295,73 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
     screen
   });
 
+  // Add a key binding to toggle focus to the conversation panel for scrolling
+  screen.key(['C-f'], () => {
+    conversationPanel.focus();
+    statusBarController.update('Scroll mode active. Press Tab to return to input.');
+    screen.render();
+  });
+  
+  // Update the tab key handler to cycle through all elements
+  screen.key(['tab'], () => {
+    if (screen.focused === inputBox) {
+      fileTreePanel.focus();
+    } else if (screen.focused === fileTreePanel) {
+      conversationPanel.focus();
+    } else {
+      inputBox.focus();
+    }
+    screen.render();
+  });
+  
+  // Add a mouse handler for better wheel behavior
+  conversationPanel.on('wheeldown', () => {
+    conversationPanel.scroll(3); // Scroll down 3 lines
+    screen.render();
+  });
+  
+  conversationPanel.on('wheelup', () => {
+    conversationPanel.scroll(-3); // Scroll up 3 lines
+    screen.render();
+  });
+
+  // Initialize agent command processor after other components
+  let agentCommandProcessor = null;
   try {
-    const agentCommandProcessor = createAgentCommandProcessor({
+    agentCommandProcessor = createAgentCommandProcessor({
       agent,
       llm: apiClient,
       screen,
       outputRenderer
     });
-  // Add to input handler
-  inputHandler.agentCommandProcessor = agentCommandProcessor;
     
-  // Add help for agent commands
-  if (agentCommandProcessor) {
-    screen.key(['F1'], () => {
-      const exampleCommands = agentCommandProcessor.getExampleCommands();
-      
-      outputRenderer.addSystemMessage('\n📚 Agent Command Examples:');
-      exampleCommands.forEach(example => {
-        outputRenderer.addSystemMessage(`• ${example}`);
+    // Add to input handler
+    inputHandler.agentCommandProcessor = agentCommandProcessor;
+    
+    // Add help for agent commands
+    if (agentCommandProcessor) {
+      screen.key(['F1'], () => {
+        const exampleCommands = agentCommandProcessor.getExampleCommands();
+        
+        outputRenderer.addSystemMessage('\n📚 Agent Command Examples:');
+        exampleCommands.forEach(example => {
+          outputRenderer.addSystemMessage(`• ${example}`);
+        });
+        
+        outputRenderer.addSystemMessage('\nTry using these command patterns or press F1 again for more examples.');
+        screen.render();
       });
-      
-      outputRenderer.addSystemMessage('\nTry using these command patterns or press F1 again for more examples.');
-      screen.render();
-    });
+    }
+  } catch (error) {
+    logger.error('Failed to initialize agent command processor:', error);
+    // Continue without agent capabilities
   }
-} catch (error) {
-  logger.error('Failed to initialize agent command processor:', error);
-  // Continue without agent capabilities
-}
-  const renderInterval = setInterval(() => {
-    screen.render();
-  }, 100);
+
+
   
   // Set up key bindings
   screen.key(['C-c'], () => {
     return process.exit(0);
-  });
-  
-  screen.key(['tab'], () => {
-    if (screen.focused === inputBox) {
-      fileTreePanel.focus();
-    } else {
-      inputBox.focus();
-    }
   });
   
   screen.key(['C-r'], () => {
@@ -285,30 +386,27 @@ function createApp({ agent, apiClient, tokenMonitor, config, projectRoot }) {
   // Initialize file tree
   fileTree.init();
   
-  
-
-// Return the application object
-// Return the application object
-return {
-  screen,
-  statusBar: statusBarController,
-  start: () => {
-    // Initial rendering
-    screen.render();
-    
-    // Welcome message
-    outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
-    statusBarController.update('Ready');
-    
-    // Other initialization...
-  },
-  destroy: () => {
-    // Cleanup code...
-    screen.destroy();
-  }
-};
+  // Return the application object
+  return {
+    screen,
+    statusBar: statusBarController,
+    start: () => {
+      // Initial rendering
+      screen.render();
+      
+      // Welcome message
+      outputRenderer.addSystemMessage('Welcome to FrankCode! Type your question or command below.');
+      statusBarController.update('Ready');
+      
+      // Other initialization...
+    },
+    destroy: () => {
+      // Cleanup code...
+      screen.destroy();
+    }
+  };
 }
 
 module.exports = {
-createApp
+  createApp
 };

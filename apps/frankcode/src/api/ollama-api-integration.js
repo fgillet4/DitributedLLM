@@ -38,36 +38,52 @@ function createOllamaClient(options) {
     try {
       logger.debug('Testing Ollama connection...');
       
-      // Check if Ollama is running
-      const response = await fetch(`${baseUrl}/api/tags`);
+      // Try localhost first, then try the configured host if different
+      let baseUrl = `http://localhost:11434`;
+      let connected = await testConnection(baseUrl);
       
-      if (!response.ok) {
-        throw new Error(`Ollama API returned status ${response.status}`);
+      if (!connected && host !== 'localhost' && host !== '127.0.0.1') {
+        baseUrl = `http://${host}:${port}`;
+        connected = await testConnection(baseUrl);
       }
       
-      const data = await response.json();
-      const models = data.models || [];
-      
-      // Log available models
-      logger.info(`Connected to Ollama. Available models: ${models.map(m => m.name).join(', ') || 'none'}`);
-      
-      // Check if our model is available
-      const modelAvailable = models.some(m => m.name === model);
-      if (!modelAvailable && models.length > 0) {
-        // Automatically use the first available model
-        model = models[0].name;
-        logger.info(`Model switched to available model: ${model}`);
-      } else if (!modelAvailable) {
-        logger.warn(`Model '${model}' not found in Ollama. Available models: ${models.map(m => m.name).join(', ')}`);
+      if (!connected) {
+        logger.error(`Failed to connect to Ollama at any endpoint`);
+        isConnected = false;
+        return false;
       }
       
-      await testOllamaEndpoint();
+      // Get available models
+      const modelsResponse = await fetch(`${baseUrl}/api/tags`);
+      
+      if (modelsResponse.ok) {
+        const data = await modelsResponse.json();
+        const models = data.models || [];
+        
+        logger.info(`Connected to Ollama. Available models: ${models.map(m => m.name).join(', ') || 'none'}`);
+        
+        // Check if our model is available
+        const modelAvailable = models.some(m => m.name === model);
+        if (!modelAvailable && models.length > 0) {
+          // Automatically use the first available model
+          model = models[0].name;
+          logger.info(`Model switched to available model: ${model}`);
+        }
+      }
       
       isConnected = true;
       return true;
     } catch (error) {
-      logger.error(`Failed to connect to Ollama at ${baseUrl}: ${error.message}`);
+      logger.error(`Failed to connect to Ollama: ${error.message}`);
       isConnected = false;
+      return false;
+    }
+  }
+  async function testConnection(baseUrl) {
+    try {
+      const response = await fetch(`${baseUrl}/api/tags`);
+      return response.ok;
+    } catch (error) {
       return false;
     }
   }

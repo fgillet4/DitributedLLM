@@ -95,18 +95,15 @@ async function listDirectoryFiles(dirPath, options = {}) {
     const files = await fastGlob(include, {
       cwd: dirPath,
       onlyFiles: true,
-      absolute: true,
+      absolute: false,
       dot: true
     });
     
     // Apply ignore rules
-    const relativePaths = files.map(f => path.relative(dirPath, f));
-    const filteredRelativePaths = ignoreRules.filter(relativePaths);
+    const filteredPaths = ignoreRules.filter(files);
     
-    // Convert back to absolute paths
-    const filteredPaths = filteredRelativePaths.map(f => path.resolve(dirPath, f));
-    
-    return filteredPaths;
+    // Convert to absolute paths
+    return filteredPaths.map(f => path.resolve(dirPath, f));
   } catch (error) {
     logger.error(`Error listing files in directory: ${dirPath}`, { error });
     throw error;
